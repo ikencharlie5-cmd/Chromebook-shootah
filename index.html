@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chromebook Shootah</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="game"></div>
+
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div id="aliveAlly" class="alive-row ally"></div>
+      <div class="score ally" id="scoreAlly">0</div>
+      <div id="timerBox">
+        <div id="roundTimer">1:40</div>
+        <div id="roundLabel">ROUND 1</div>
+      </div>
+      <div class="score enemy" id="scoreEnemy">0</div>
+      <div id="aliveEnemy" class="alive-row enemy"></div>
+    </div>
+    <canvas id="minimap"></canvas>
+    <div id="sideTag"></div>
+    <div id="killfeed"></div>
+
+    <div id="crosshair">
+      <div class="ch top"></div><div class="ch bottom"></div>
+      <div class="ch left"></div><div class="ch right"></div>
+      <div class="dot"></div>
+    </div>
+    <div id="hitmarker"></div>
+    <div id="dmgIndicator"><div class="arc"></div></div>
+    <div id="redFlash"></div>
+    <div id="scope"><div class="lens"></div></div>
+
+    <div id="centerMsg"></div>
+    <div id="subMsg"></div>
+    <div id="progressWrap" class="hidden">
+      <div id="progressLabel"></div>
+      <div id="progressBar"><div id="progressFill"></div></div>
+    </div>
+    <div id="hint"></div>
+    <div id="spectate"></div>
+
+    <div id="vitals">
+      <div class="vital"><span class="lbl">SHIELD</span><span id="armorVal">0</span></div>
+      <div class="vital big"><span class="lbl">HEALTH</span><span id="healthVal">100</span></div>
+    </div>
+    <div id="credits"></div>
+    <div id="coreTag" class="hidden">◆ YOU HAVE THE CORE — plant at A or B (hold E)</div>
+    <div id="weaponInfo">
+      <div id="weaponName">Pip-9</div>
+      <div id="ammo"><span id="ammoMag">12</span><span id="ammoReserve">/ 36</span></div>
+      <div id="slots"></div>
+    </div>
+  </div>
+
+  <div id="scoreboard" class="hidden"></div>
+
+  <div id="buyMenu" class="hidden">
+    <div class="buy-head">
+      <h2>ARMORY</h2>
+      <div id="buyCredits"></div>
+      <div class="buy-tip">Press <b>B</b> or click outside to close · Buy phase only</div>
+    </div>
+    <div id="buyItems"></div>
+  </div>
+
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>CHROMEBOOK<br><span>SHOOTAH</span></h1>
+      <p class="tag">5v5 tactical shooter · Map: Outpost</p>
+      <button id="playBtn" class="primary">PLAY</button>
+      <div id="settingsSlot"></div>
+      <div class="controls">
+        <h3>Controls</h3>
+        <div class="grid">
+          <span>WASD</span><span>Move</span>
+          <span>Mouse</span><span>Aim / Shoot</span>
+          <span>Shift</span><span>Walk (quiet + accurate)</span>
+          <span>C</span><span>Crouch</span>
+          <span>Space</span><span>Jump</span>
+          <span>R</span><span>Reload</span>
+          <span>1 2 3 / Q</span><span>Primary / Pistol / Knife / Last</span>
+          <span>Right click</span><span>Scope (sniper)</span>
+          <span>B</span><span>Buy menu (buy phase)</span>
+          <span>E (hold)</span><span>Plant / defuse the Core</span>
+          <span>Tab</span><span>Scoreboard</span>
+          <span>Esc</span><span>Pause</span>
+        </div>
+        <p class="rules">Attackers win by planting the Core at a site and letting it detonate, or by eliminating the defenders. Defenders win by stopping the plant, defusing the Core, or running out the clock. First team to 7 rounds wins; sides swap after round 6.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="pauseMenu" class="overlay hidden">
+    <div class="panel">
+      <h2>PAUSED</h2>
+      <button id="resumeBtn" class="primary">RESUME</button>
+      <div id="pauseSettingsSlot"></div>
+      <button id="quitBtn">QUIT TO MENU</button>
+    </div>
+  </div>
+
+  <div id="matchEnd" class="overlay hidden">
+    <div class="panel">
+      <h1 id="matchResult">VICTORY</h1>
+      <p id="matchScore"></p>
+      <div id="matchStats"></div>
+      <button id="againBtn" class="primary">PLAY AGAIN</button>
+      <button id="menuBtn">MAIN MENU</button>
+    </div>
+  </div>
+
+  <div id="settings" class="settings">
+    <label>Difficulty
+      <select id="setDifficulty">
+        <option value="easy">Easy</option>
+        <option value="normal">Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+    </label>
+    <label>Sensitivity <span id="sensVal"></span>
+      <input id="setSens" type="range" min="0.2" max="5" step="0.05">
+    </label>
+    <label>Field of view <span id="fovVal"></span>
+      <input id="setFov" type="range" min="70" max="110" step="1">
+    </label>
+    <label>Volume <span id="volVal"></span>
+      <input id="setVol" type="range" min="0" max="1" step="0.05">
+    </label>
+    <label>Graphics
+      <select id="setQuality">
+        <option value="low">Low (fastest)</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
+    <label>Crosshair color
+      <select id="setCrossColor">
+        <option value="#00ff9c">Green</option>
+        <option value="#ffffff">White</option>
+        <option value="#ffe14d">Yellow</option>
+        <option value="#ff4df0">Pink</option>
+        <option value="#4dd9ff">Cyan</option>
+      </select>
+    </label>
+    <label class="check"><input id="setFullscreen" type="checkbox"> Fullscreen when playing</label>
+    <label class="check"><input id="setFps" type="checkbox"> Show FPS</label>
+  </div>
+
+  <div id="fps" class="hidden"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
