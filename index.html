@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chromebook Shootah</title>
-  <link rel="stylesheet" href="css/style.css?v=20261031174228">
+  <link rel="stylesheet" href="css/style.css?v=20261031175357">
 </head>
 <body>
   <div id="game"></div>
@@ -318,7 +318,7 @@
   </div>
   <script src="lib/peerjs.min.js"></script>
   <script>
-    window.GAME_VERSION = '20261031174228';
+    window.GAME_VERSION = '20261031175357';
     // If a script fails (often a stale cache after an update), show a clear message instead of a blank screen.
     function showLoadError(msg) {
       document.getElementById('loadError').classList.remove('hidden');
@@ -328,6 +328,6 @@
     window.addEventListener('unhandledrejection', (e) => { if (!window.__game) showLoadError(String(e.reason)); });
     setTimeout(() => { if (!window.__game) showLoadError('Game did not finish loading.'); }, 15000);
   </script>
-  <script type="module" src="js/main.js?v=20261031174228" onerror="showLoadError('A game file failed to load.')"></script>
+  <script type="module" src="js/main.js?v=20261031175357" onerror="showLoadError('A game file failed to load.')"></script>
 </body>
 </html>

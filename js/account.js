@@ -1,7 +1,7 @@
 // Cloud accounts: username + password via Firebase Auth, progress saved to Firestore.
 // Uses Firebase's REST APIs directly (no SDK). Everything the game saves lives in localStorage
 // (profile + settings); while signed in that data is mirrored to users/{uid} in Firestore.
-import { FIREBASE_CONFIG } from './firebase-config.js?v=20261031174228';
+import { FIREBASE_CONFIG } from './firebase-config.js?v=20261031175357';
 
 const KEYS = ['cbs-profile', 'cbs-settings'];       // what gets synced
 const SESSION = 'cbs-account';                       // { uid, name, refresh, stamp }

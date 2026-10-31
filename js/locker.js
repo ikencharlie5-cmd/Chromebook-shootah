@@ -1,8 +1,8 @@
-import { WEAPONS } from './weapons.js?v=20261031174228';
+import { WEAPONS } from './weapons.js?v=20261031175357';
 import {
   SKINS, RARITY, KNIFE_MODELS, LOCKER_WEAPONS, ROLL_COST, DUPLICATE_REFUND, KNIFE_CHANCE,
   loadProfile, saveProfile, itemKey, parseKey, equippedFor, randomItem,
-} from './skins.js?v=20261031174228';
+} from './skins.js?v=20261031175357';
 
 const $ = (id) => document.getElementById(id);
 const weaponName = (w) => (w === 'knife' ? 'Knife' : WEAPONS[w].name);
