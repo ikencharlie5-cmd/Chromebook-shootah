@@ -1,4 +1,4 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031170820';
+import * as THREE from '../lib/three.module.min.js?v=20261031171146';
 
 // ---------------------------------------------------------------------------
 // Helpers: seeded random, canvas textures, geometry batching

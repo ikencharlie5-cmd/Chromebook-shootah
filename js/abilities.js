@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031170820';
-import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031170820';
+import * as THREE from '../lib/three.module.min.js?v=20261031171146';
+import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031171146';
 
 const GRAV = 14;
 const SMOKE_R = 4.3;
@@ -197,7 +197,7 @@ export class Abilities {
       case 'reveal':
         for (let i = 0; i < 3; i++) {
           this.timers.push({ t: i * 2, fn: () => {
-            for (const e of g.combatants) if (e.alive && e.team !== c.team) this.reveal(e, c.team, 1.6);
+            for (const e of g.combatants) if (e.alive && e.team !== c.team) this.reveal(e, c.team, 1.6, c);
             this.sfx('recon', null, null);
           } });
         }
@@ -219,7 +219,7 @@ export class Abilities {
         for (const e of g.combatants) {
           if (!e.alive || e.team === c.team) continue;
           const ee = this.eye(e, new THREE.Vector3());
-          if (ee.distanceTo(eye) < 40 && g.canSee(ee, eye)) this.blind(e, 3.2);
+          if (ee.distanceTo(eye) < 40 && g.canSee(ee, eye)) this.blind(e, 3.2, c);
         }
         this.ring(eye, 0xffffff, 40, 0.7);
         this.sfx('flash', c.pos, c);
@@ -395,12 +395,13 @@ export class Abilities {
       const facing = _d.dot(_b);
       let dur = facing > 0.55 ? 2.3 : facing > 0.1 ? 1.3 : facing > -0.3 ? 0.5 : 0;
       dur *= dist > 25 ? 0.7 : 1;
-      if (dur > 0) this.blind(c, dur);
+      if (dur > 0) this.blind(c, dur, owner);
     }
   }
 
-  blind(c, dur) {
+  blind(c, dur, by = null) {
     if (dur <= 0) return;
+    if (by) this.game.creditAssist(c, by, 4 + dur);
     c.blind = Math.max(c.blind, dur);
     c.blindMax = Math.max(c.blind, c.blindMax || 0);
     if (c.ai) { c.ai.target = null; c.ai.reactT = 0.6; }
@@ -464,12 +465,13 @@ export class Abilities {
     for (const e of g.combatants) {
       if (!e.alive || e.team === d.owner.team) continue;
       _a.set(e.pos.x, e.pos.y + 1.2, e.pos.z);
-      if (_a.distanceTo(d.pos) < 28 && g.canSee(d.pos, _a)) this.reveal(e, d.owner.team, 2.2);
+      if (_a.distanceTo(d.pos) < 28 && g.canSee(d.pos, _a)) this.reveal(e, d.owner.team, 2.2, d.owner);
     }
   }
 
-  reveal(e, byTeam, dur) {
+  reveal(e, byTeam, dur, by = null) {
     const g = this.game;
+    if (by) g.creditAssist(e, by, 6);
     e.revealUntil = Math.max(e.revealUntil || 0, g.time + dur);
     e.spotBy[byTeam] = Math.max(e.spotBy[byTeam], g.time + dur);
     for (const o of g.combatants) {

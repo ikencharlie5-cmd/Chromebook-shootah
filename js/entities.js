@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031170820';
-import { makeWeaponState } from './weapons.js?v=20261031170820';
+import * as THREE from '../lib/three.module.min.js?v=20261031171146';
+import { makeWeaponState } from './weapons.js?v=20261031171146';
 
 export const RUN_SPEED = 5.4;
 export const WALK_SPEED = 2.9;
@@ -28,6 +28,8 @@ export class Combatant {
     this.credits = 800;
     this.kills = 0;
     this.deaths = 0;
+    this.assists = 0;
+    this.assistBy = new Map();   // attacker id -> time until which they'd get an assist
     this.hasCore = false;
     this.spotUntil = 0;
     this.spotBy = [0, 0];   // per team: time until which this combatant shows on that team's minimap

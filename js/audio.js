@@ -185,6 +185,14 @@ export class Sound {
     if (n >= 2) this.tone(o, t + 0.09, 'sine', f * 1.5, f * 1.5, 0.15, 0.35);
   }
 
+  // softer, lower chime for assists
+  assist() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.out({ gain: 1, pan: 0 });
+    this.tone(o, t, 'sine', 660, 660, 0.16, 0.3);
+    this.tone(o, t + 0.07, 'sine', 990, 990, 0.1, 0.3);
+  }
+
   // ACE fanfare
   ace() {
     if (!this.ctx) return;

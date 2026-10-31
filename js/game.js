@@ -1,18 +1,18 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031170820';
-import { GameMap } from './map.js?v=20261031170820';
-import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031170820';
-import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031170820';
-import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031170820';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031170820';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031170820';
-import { BotBrain, DIFFICULTY } from './bots.js?v=20261031170820';
-import { Abilities } from './abilities.js?v=20261031170820';
-import { Effects } from './effects.js?v=20261031170820';
-import { ViewModel } from './viewmodel.js?v=20261031170820';
-import { Hud } from './hud.js?v=20261031170820';
-import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031170820';
-import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031170820';
-import { NetMixin } from './netgame.js?v=20261031170820';
+import * as THREE from '../lib/three.module.min.js?v=20261031171146';
+import { GameMap } from './map.js?v=20261031171146';
+import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031171146';
+import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031171146';
+import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031171146';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031171146';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031171146';
+import { BotBrain, DIFFICULTY } from './bots.js?v=20261031171146';
+import { Abilities } from './abilities.js?v=20261031171146';
+import { Effects } from './effects.js?v=20261031171146';
+import { ViewModel } from './viewmodel.js?v=20261031171146';
+import { Hud } from './hud.js?v=20261031171146';
+import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031171146';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031171146';
+import { NetMixin } from './netgame.js?v=20261031171146';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -319,6 +319,7 @@ export class Game {
       c.alive = true;
       c.health = 100;
       c.roundKills = 0;
+      c.assistBy.clear();
       c.hasCore = false;
       c.action = null;
       c.scoped = false;
@@ -892,6 +893,16 @@ export class Game {
     if (Math.random() < 0.3) this.sound.casing();
   }
 
+  creditAssist(victim, by, seconds) {
+    if (!victim || !by || by === victim || by.team === victim.team) return;
+    victim.assistBy.set(by.id, Math.max(victim.assistBy.get(by.id) || 0, this.time + seconds));
+  }
+
+  onPlayerAssist(victim) {
+    this.hud.assistPop(victim.name);
+    this.sound.assist();
+  }
+
   onPlayerKill(victim, n) {
     this.sound.kill(n);
     const enemies = this.combatants.filter((c) => c.team !== this.playerTeam).length;
@@ -981,6 +992,7 @@ export class Game {
     this.emit({ e: 'dmg', v: victim.id, a: attacker.id, hd: part === 'head' ? 1 : 0, k: killed ? 1 : 0, s: dir ? 1 : 0, n: Math.round(dmg) });
     victim.hitT = 0.22;
     if (attacker !== victim && attacker.team !== victim.team) {
+      this.creditAssist(victim, attacker, 15);
       attacker.dmgDealt = (attacker.dmgDealt || 0) + Math.min(dmg, victim.health + d);
       if (dir) { attacker.hitsLanded = (attacker.hitsLanded || 0) + 1; if (part === 'head') attacker.headHits = (attacker.headHits || 0) + 1; }
     }
@@ -1017,6 +1029,17 @@ export class Game {
     victim.scoped = false;
     victim.deadT = 0;
     this.addUlt(victim, 1);
+    // assists: teammates of the killer who damaged, flashed or revealed the victim recently
+    const assisters = [];
+    for (const [id, until] of victim.assistBy) {
+      const a = this.byId[id];
+      if (!a || a === killer || until < this.time || (killer && a.team !== killer.team) || a.team === victim.team) continue;
+      a.assists++;
+      a.credits = Math.min(MAX_CREDITS, a.credits + 50);
+      assisters.push(a);
+      if (a.isPlayer) this.onPlayerAssist(victim);
+    }
+    victim.assistBy.clear();
     if (killer && killer !== victim && killer.team !== victim.team) {
       killer.roundKills = (killer.roundKills || 0) + 1;
       if (killer.isPlayer) this.onPlayerKill(victim, killer.roundKills);
@@ -1033,8 +1056,8 @@ export class Game {
       this.core.mesh.visible = true;
       this.core.carrier = null;
     }
-    this.emit({ e: 'k', v: victim.id, k: killer ? killer.id : -1, w: weaponName, h: head ? 1 : 0 });
-    this.hud.killfeed(killer, victim, weaponName, head);
+    this.emit({ e: 'k', v: victim.id, k: killer ? killer.id : -1, w: weaponName, h: head ? 1 : 0, as: assisters.map((a) => a.id) });
+    this.hud.killfeed(killer, victim, weaponName, head, assisters);
     if (victim.isPlayer) {
       this.startDeathCam(killer, weaponName);
       this.hud.message('YOU DIED', '', 'loss', 2.5);

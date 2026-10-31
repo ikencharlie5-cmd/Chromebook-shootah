@@ -109,8 +109,10 @@ balconies, rocks, bushes and puddles, real-time shadows (Medium/High graphics) a
 - **Rounds:** 15 s buy phase (you're held in spawn) → 1:40 round. Attackers win by detonating the Core
   (40 s fuse) or wiping the defenders. Defenders win by wiping the attackers before a plant, defusing (7 s), or
   running out the clock.
-- **Economy:** ¤800 at the start of each half. +¤200 per kill, +¤3000 for a round win, ¤1900–2900 for a loss
+- **Economy:** ¤800 at the start of each half. +¤200 per kill, +¤50 per assist, +¤3000 for a round win, ¤1900–2900 for a loss
   (more for losing streaks), +¤300 to attackers for a plant. Survivors keep their guns and shield.
+- **Assists:** damage, flash or reveal an enemy and you get an assist if a teammate finishes them within a few seconds
+  (damage counts for 15 s). Assists show in the killfeed, scoreboards and match results.
 - **Gunplay:** first shots are accurate when you're standing still; running, jumping and spraying all add spread.
   Rifles climb straight up and then sway side to side — pull down to control them. Headshots deal big damage.
 - **Sound matters:** running footsteps and gunfire are positional, and bots hear them too. Walk to stay quiet.

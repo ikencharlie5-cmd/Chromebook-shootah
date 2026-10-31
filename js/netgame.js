@@ -1,7 +1,7 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031170820';
-import { makeWeaponState } from './weapons.js?v=20261031170820';
-import { applyMovement } from './entities.js?v=20261031170820';
-import { wrapAngle, yawTo } from './util.js?v=20261031170820';
+import * as THREE from '../lib/three.module.min.js?v=20261031171146';
+import { makeWeaponState } from './weapons.js?v=20261031171146';
+import { applyMovement } from './entities.js?v=20261031171146';
+import { wrapAngle, yawTo } from './util.js?v=20261031171146';
 
 // Multiplayer glue mixed into Game.
 //   Host: simulates the whole match (bots + every player), applies remote players' inputs,
@@ -41,7 +41,7 @@ export const NetMixin = {
           h: Math.ceil(c.health), ar: Math.ceil(c.armor), sl: SLOTS.indexOf(c.slot),
           pr: c.inv.primary?.def.id || '', se: c.inv.secondary?.def.id || '',
           mg: w?.mag ?? 0, rs: w?.reserve ?? 0,
-          cd: c.credits, k: c.kills, d: c.deaths, hc: c.hasCore ? 1 : 0, bl: r2(c.blind), od: c.overdriveT > 0 ? 1 : 0,
+          cd: c.credits, k: c.kills, d: c.deaths, as: c.assists, hc: c.hasCore ? 1 : 0, bl: r2(c.blind), od: c.overdriveT > 0 ? 1 : 0,
           ac: c.action ? [c.action.type === 'plant' ? 1 : 2, r2(c.action.t)] : 0,
           ch: [c.charges.q, c.charges.e, c.charges.f], u: c.ult,
           sp: [c.spotBy[0] > this.time ? 1 : 0, c.spotBy[1] > this.time ? 1 : 0], rv: c.revealUntil > this.time ? 1 : 0,
@@ -223,7 +223,7 @@ export const NetMixin = {
       const wasAlive = c.alive;
       c.alive = !!o.a;
       if (wasAlive && !c.alive) { c.deadT = 0; if (c === p) { this.hud.scope(false); p.scoped = false; } }
-      c.health = o.h; c.armor = o.ar; c.credits = o.cd; c.kills = o.k; c.deaths = o.d; c.hasCore = !!o.hc;
+      c.health = o.h; c.armor = o.ar; c.credits = o.cd; c.kills = o.k; c.deaths = o.d; c.assists = o.as || 0; c.hasCore = !!o.hc;
       c.dmgDealt = o.dd; c.hitsLanded = o.hl; c.headHits = o.hh;
       c.overdriveT = o.od ? 1 : 0;
       c.action = o.ac ? { type: o.ac[0] === 1 ? 'plant' : 'defuse', t: o.ac[1] } : null;
@@ -306,7 +306,9 @@ export const NetMixin = {
       case 'k': {
         const v = C(ev.v), k = C(ev.k);
         if (!v) return;
-        this.hud.killfeed(k || null, v, ev.w, !!ev.h);
+        const as = (ev.as || []).map(C).filter(Boolean);
+        this.hud.killfeed(k || null, v, ev.w, !!ev.h, as);
+        if (as.includes(p)) this.onPlayerAssist(v);
         if (k === p && v.team !== p.team) {
           p.roundKills = (p.roundKills || 0) + 1;
           this.onPlayerKill(v, p.roundKills);

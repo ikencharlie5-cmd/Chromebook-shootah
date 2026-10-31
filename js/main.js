@@ -1,12 +1,12 @@
-import { Game } from './game.js?v=20261031170820';
-import { Sound } from './audio.js?v=20261031170820';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031170820';
-import { Locker } from './locker.js?v=20261031170820';
-import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031170820';
-import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031170820';
-import { makeRoster } from './game.js?v=20261031170820';
-import { randomMapDef } from './maps.js?v=20261031170820';
-import { Party, MAX_PARTY } from './net.js?v=20261031170820';
+import { Game } from './game.js?v=20261031171146';
+import { Sound } from './audio.js?v=20261031171146';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031171146';
+import { Locker } from './locker.js?v=20261031171146';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031171146';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031171146';
+import { makeRoster } from './game.js?v=20261031171146';
+import { randomMapDef } from './maps.js?v=20261031171146';
+import { Party, MAX_PARTY } from './net.js?v=20261031171146';
 
 const $ = (id) => document.getElementById(id);
 
@@ -510,7 +510,7 @@ game.onMatchEnd = (won, mine, theirs, player) => {
   r.className = won ? 'win' : 'loss';
   $('matchScore').textContent = `${mine} — ${theirs}`;
   $('matchStats').innerHTML = matchTable(player);
-  const earned = 50 + player.kills * 10 + (won ? 100 : 0) + (game.ranked ? 50 : 0);
+  const earned = 50 + player.kills * 10 + (player.assists || 0) * 5 + (won ? 100 : 0) + (game.ranked ? 50 : 0);
   locker.addCoins(earned);
   $('matchCoins').textContent = `+ ¤ ${earned} coins — spend them in the Locker`;
   showRankResult(won, mine, theirs, player);
@@ -520,14 +520,14 @@ game.onMatchEnd = (won, mine, theirs, player) => {
 // End-of-match scoreboard with damage, headshot % and an MVP.
 function matchTable(player) {
   const rows = [...game.combatants].map((c) => ({
-    c, score: c.kills * 150 + (c.dmgDealt || 0) - c.deaths * 40,
+    c, score: c.kills * 150 + (c.assists || 0) * 50 + (c.dmgDealt || 0) - c.deaths * 40,
     hs: c.hitsLanded ? Math.round((c.headHits || 0) / c.hitsLanded * 100) : 0,
   })).sort((a, b) => b.score - a.score);
   const mvp = rows[0]?.c;
   const line = (r) => `<tr class="${r.c === player ? 'me' : ''} ${r.c.team === player.team ? 'ally' : 'enemy'}">
     <td>${r.c === mvp ? '<span class="mvp">MVP</span> ' : ''}${escapeHtml(r.c.name)}</td><td>${r.c.agent.name}</td>
-    <td>${r.c.kills}</td><td>${r.c.deaths}</td><td>${Math.round(r.c.dmgDealt || 0)}</td><td>${r.hs}%</td></tr>`;
-  return `<table class="end-table"><tr><th>PLAYER</th><th>AGENT</th><th>K</th><th>D</th><th>DMG</th><th>HS</th></tr>${rows.map(line).join('')}</table>`;
+    <td>${r.c.kills}</td><td>${r.c.deaths}</td><td>${r.c.assists || 0}</td><td>${Math.round(r.c.dmgDealt || 0)}</td><td>${r.hs}%</td></tr>`;
+  return `<table class="end-table"><tr><th>PLAYER</th><th>AGENT</th><th>K</th><th>D</th><th>A</th><th>DMG</th><th>HS</th></tr>${rows.map(line).join('')}</table>`;
 }
 
 function showRankResult(won, mine, theirs, player) {

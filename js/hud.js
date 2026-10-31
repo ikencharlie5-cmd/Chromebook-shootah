@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031170820';
-import { fmtTime } from './util.js?v=20261031170820';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031170820';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031171146';
+import { fmtTime } from './util.js?v=20261031171146';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031171146';
 
 const $ = (id) => document.getElementById(id);
 
@@ -227,6 +227,14 @@ export class Hud {
     el.querySelector('.ace-rays').style.transform = `rotate(${t * 14}deg)`;
   }
 
+  assistPop(name) {
+    const n = document.createElement('div');
+    n.className = 'assist-pop';
+    n.innerHTML = `<b>ASSIST</b> ${name}<span>+¤50</span>`;
+    this.el.hud.appendChild(n);
+    setTimeout(() => n.remove(), 1600);
+  }
+
   killBanner(name, streak) {
     const titles = ['ELIMINATED', 'DOUBLE KILL', 'TRIPLE KILL', 'TEAM WIPE'];
     this.el.kbTitle.textContent = titles[Math.min(streak - 1, titles.length - 1)];
@@ -295,14 +303,14 @@ export class Hud {
   hint(text) { this.set('hint', this.el.hint, text || ''); }
   spectate(text) { this.set('spec', this.el.spectate, text || ''); }
 
-  killfeed(killer, victim, weapon, head) {
+  killfeed(killer, victim, weapon, head, assisters = []) {
     const g = this.game;
     const n = document.createElement('div');
-    n.className = 'kf' + (killer?.isPlayer || victim.isPlayer ? ' mine' : '');
+    n.className = 'kf' + (killer?.isPlayer || victim.isPlayer || assisters.some((a) => a.isPlayer) ? ' mine' : '');
     n.dataset.t = performance.now();
     const cls = (c) => (c.team === g.playerTeam ? 'a' : 'e');
     n.innerHTML = killer
-      ? `<span class="${cls(killer)}">${killer.name}</span><span class="w">${weapon}</span>${head ? '<span class="hs">◎</span>' : ''}<span class="${cls(victim)}">${victim.name}</span>`
+      ? `<span class="${cls(killer)}">${killer.name}</span>${assisters.map((a) => `<span class="as ${cls(a)}">+ ${a.name}</span>`).join('')}<span class="w">${weapon}</span>${head ? '<span class="hs">◎</span>' : ''}<span class="${cls(victim)}">${victim.name}</span>`
       : `<span class="w">${weapon}</span><span class="${cls(victim)}">${victim.name}</span>`;
     this.el.killfeed.appendChild(n);
     while (this.el.killfeed.children.length > 6) this.el.killfeed.firstChild.remove();
@@ -362,11 +370,11 @@ export class Hud {
       const rows = g.combatants.filter((c) => c.team === team)
         .sort((a, b) => b.kills - a.kills)
         .map((c) => `<tr class="${c.alive ? '' : 'dead'} ${c.isPlayer ? 'me' : ''}">
-          <td>${c.name} <span class="ag">${c.agent.name}</span>${c.hasCore && team === g.playerTeam ? ' ◆' : ''}</td><td>${c.kills}</td><td>${c.deaths}</td><td>${Math.round(c.dmgDealt || 0)}</td>
+          <td>${c.name} <span class="ag">${c.agent.name}</span>${c.hasCore && team === g.playerTeam ? ' ◆' : ''}</td><td>${c.kills}</td><td>${c.deaths}</td><td>${c.assists || 0}</td><td>${Math.round(c.dmgDealt || 0)}</td>
           <td>${team === g.playerTeam ? '¤ ' + c.credits : ''}</td>
           <td>${team === g.playerTeam ? (c.inv.primary ? c.inv.primary.def.name : c.inv.secondary?.def.name ?? '') : ''}</td></tr>`)
         .join('');
-      return `<table><tr><th>PLAYER</th><th>K</th><th>D</th><th>DMG</th><th>CREDITS</th><th>WEAPON</th></tr>${rows}</table>`;
+      return `<table><tr><th>PLAYER</th><th>K</th><th>D</th><th>A</th><th>DMG</th><th>CREDITS</th><th>WEAPON</th></tr>${rows}</table>`;
     };
     el.innerHTML = `<div class="ally"><h3>YOUR TEAM · ${g.score[g.playerTeam]}</h3>${table(g.playerTeam)}</div>
       <div class="enemy"><h3>ENEMY TEAM · ${g.score[1 - g.playerTeam]}</h3>${table(1 - g.playerTeam)}</div>`;
