@@ -462,3 +462,28 @@ button.mini { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
 .assist-pop { position: absolute; left: 50%; bottom: 205px; transform: translateX(-50%); font-size: 15px; letter-spacing: 2px;
   background: rgba(10,14,20,0.75); padding: 5px 16px; border-left: 3px solid var(--ally); text-shadow: 0 1px 3px #000; pointer-events: none; }
 .assist-pop b { color: var(--ally); margin-right: 6px; } .assist-pop span { color: var(--gold); margin-left: 8px; font-weight: 800; }
+
+/* ---------- accounts ---------- */
+.account-btn { width: auto; margin: 0; display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 14px; font-weight: 800;
+  letter-spacing: 2px; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18); white-space: nowrap; }
+.account-btn:hover { background: rgba(255,255,255,0.12); }
+.acc-dot { width: 9px; height: 9px; border-radius: 50%; background: #8a94a3; flex: none; }
+.acc-dot.synced { background: #3ddc84; box-shadow: 0 0 8px #3ddc84; }
+.acc-dot.saving, .acc-dot.connecting { background: #ffd23f; }
+.acc-dot.offline { background: #ff5a5f; }
+.account-panel { width: min(440px, 94vw); }
+.acc-note { opacity: 0.8; font-size: 14px; margin: 4px 0 12px; }
+.acc-note.small { font-size: 12px; margin: 6px 0; }
+.acc-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.acc-tabs button { flex: 1; margin: 0; padding: 8px; font-size: 13px; background: rgba(255,255,255,0.05); border: none; border-bottom: 3px solid transparent; }
+.acc-tabs button.on { border-bottom-color: var(--gold); background: rgba(255,255,255,0.1); }
+#accForm label { display: block; font-size: 12px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
+#accForm input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: #1b222b; color: #eef2f5;
+  border: 1px solid #333c47; padding: 9px 10px; font-size: 16px; font-weight: 700; }
+#accForm input:focus { outline: 2px solid var(--gold); }
+.acc-submit { font-size: 22px; letter-spacing: 4px; padding: 12px; margin-top: 6px; }
+.acc-submit:disabled { opacity: 0.6; transform: none; }
+.acc-who { font-size: 18px; margin: 8px 0; }
+.acc-who b { color: var(--gold); }
+.acc-state { font-size: 14px; opacity: 0.85; margin-bottom: 14px; }
+.acc-error { color: #ff7a7e; font-weight: 700; font-size: 14px; min-height: 18px; margin: 8px 0; }

@@ -1,12 +1,13 @@
-import { Game } from './game.js?v=20261031172740';
-import { Sound } from './audio.js?v=20261031172740';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031172740';
-import { Locker } from './locker.js?v=20261031172740';
-import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031172740';
-import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031172740';
-import { makeRoster } from './game.js?v=20261031172740';
-import { randomMapDef } from './maps.js?v=20261031172740';
-import { Party, MAX_PARTY } from './net.js?v=20261031172740';
+import { Game } from './game.js?v=20261031174228';
+import { Sound } from './audio.js?v=20261031174228';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031174228';
+import { Locker } from './locker.js?v=20261031174228';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031174228';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031174228';
+import { makeRoster } from './game.js?v=20261031174228';
+import { randomMapDef } from './maps.js?v=20261031174228';
+import { markDirty, startAccount, signIn, signUp, signOut, account, onAccountChange, accountsEnabled } from './account.js?v=20261031174228';
+import { Party, MAX_PARTY } from './net.js?v=20261031174228';
 
 const $ = (id) => document.getElementById(id);
 
@@ -19,7 +20,7 @@ const DEFAULTS = {
 };
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('cbs-settings') || '{}') }; } catch { /* ignore */ }
-const saveSettings = () => localStorage.setItem('cbs-settings', JSON.stringify(settings));
+const saveSettings = () => { localStorage.setItem('cbs-settings', JSON.stringify(settings)); markDirty(); };
 if (!settings.name) { settings.name = `Player${Math.floor(100 + Math.random() * 900)}`; saveSettings(); }
 
 // ---- input ------------------------------------------------------------------
@@ -363,12 +364,88 @@ locker.onChange = refreshLobby;
 refreshLobby();
 
 function openPanel(id) {
-  for (const p of ['settingsPanel', 'controlsPanel']) $(p).classList.toggle('hidden', p !== id);
+  for (const p of ['settingsPanel', 'controlsPanel', 'accountPanel']) $(p).classList.toggle('hidden', p !== id);
 }
 $('settingsBtn').addEventListener('click', () => { placeSettings('settingsSlot'); openPanel('settingsPanel'); });
 $('controlsBtn').addEventListener('click', () => openPanel('controlsPanel'));
 for (const b of document.querySelectorAll('.panel-close')) b.addEventListener('click', () => openPanel(null));
 $('agentBtn').addEventListener('click', () => openAgentSelect(false));
+
+// ---- accounts -------------------------------------------------------------------
+
+let accMode = 'in';
+const STATE_TEXT = {
+  synced: 'Cloud save on · everything is saved',
+  saving: 'Saving…',
+  connecting: 'Connecting…',
+  offline: 'Offline: progress is kept on this device and uploads when you reconnect',
+};
+function refreshAccount() {
+  const a = account();
+  const signed = !!a.name;
+  $('accountLabel').textContent = signed ? a.name : 'SIGN IN';
+  $('accountBtn').querySelector('.acc-dot').className = `acc-dot ${signed ? a.state : ''}`;
+  $('accountBtn').title = signed ? (STATE_TEXT[a.state] || '') : 'Sign in to save your progress to the cloud';
+  $('accOut').classList.toggle('hidden', signed);
+  $('accIn').classList.toggle('hidden', !signed);
+  if (signed) {
+    $('accName').textContent = a.name;
+    $('accState').textContent = (STATE_TEXT[a.state] || '') + (a.state === 'offline' && a.msg ? ` (${a.msg})` : '');
+  }
+}
+function setAccMode(m) {
+  accMode = m;
+  $('accTabIn').classList.toggle('on', m === 'in');
+  $('accTabUp').classList.toggle('on', m === 'up');
+  $('accPass2Row').classList.toggle('hidden', m === 'in');
+  $('accUpNote').classList.toggle('hidden', m === 'in');
+  $('accPass').autocomplete = m === 'in' ? 'current-password' : 'new-password';
+  $('accSubmit').textContent = m === 'in' ? 'SIGN IN' : 'CREATE ACCOUNT';
+  $('accError').textContent = '';
+}
+$('accTabIn').addEventListener('click', () => setAccMode('in'));
+$('accTabUp').addEventListener('click', () => setAccMode('up'));
+$('accountBtn').addEventListener('click', () => {
+  sound.init();
+  refreshAccount();
+  $('accError').textContent = accountsEnabled() ? '' : 'Cloud accounts are not set up yet (the game owner needs to add the Firebase config).';
+  openPanel($('accountPanel').classList.contains('hidden') ? 'accountPanel' : null);
+  if (!account().name) setTimeout(() => $('accUser').focus(), 30);
+});
+// typing in the account form must not trigger game hotkeys
+for (const id of ['accUser', 'accPass', 'accPass2']) $(id).addEventListener('keydown', (e) => e.stopPropagation());
+$('accForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $('accUser').value.trim(), pass = $('accPass').value;
+  if (accMode === 'up' && pass !== $('accPass2').value) { $('accError').textContent = "Passwords don't match."; return; }
+  $('accSubmit').disabled = true;
+  $('accError').textContent = '';
+  try {
+    if (accMode === 'up') {
+      // a new account takes its username as your in-game name (if you never picked one)
+      if (/^Player\d+$/.test(settings.name)) { $('nameInput').value = user; $('nameInput').dispatchEvent(new Event('input')); }
+      saveSettings();
+      await signUp(user, pass);
+      $('accPass').value = $('accPass2').value = '';
+      party.status(`Account created. Welcome, ${user}!`);
+    } else if (await signIn(user, pass)) {
+      location.reload();   // load the account's progress
+      return;
+    }
+  } catch (err) {
+    $('accError').textContent = err.message;
+  }
+  $('accSubmit').disabled = false;
+  refreshAccount();
+});
+$('accSignOut').addEventListener('click', async () => {
+  $('accSignOut').disabled = true;
+  await signOut();
+  location.reload();
+});
+onAccountChange(refreshAccount);
+refreshAccount();
+startAccount().then((changed) => { if (changed && !game.running) location.reload(); });
 canvas.addEventListener('click', () => { if (!game.running && !$('menu').classList.contains('hidden')) openAgentSelect(false); });
 
 // ---- agent select -------------------------------------------------------------
@@ -609,4 +686,5 @@ setInterval(() => {
   }
 }
 requestAnimationFrame(loop);
+window.__locker = locker;
 window.__game = game; // handy for debugging from the console

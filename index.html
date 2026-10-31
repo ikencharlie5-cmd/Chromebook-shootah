@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chromebook Shootah</title>
-  <link rel="stylesheet" href="css/style.css?v=20261031172740">
+  <link rel="stylesheet" href="css/style.css?v=20261031174228">
 </head>
 <body>
   <div id="game"></div>
@@ -99,6 +99,7 @@
       </div>
       <div id="lobbyRank"></div>
       <div class="lobby-coins coin-count">¤ 0</div>
+      <button id="accountBtn" class="account-btn"><span class="acc-dot"></span><span id="accountLabel">SIGN IN</span></button>
     </div>
 
     <div class="name-tag" id="tag0"><div id="tagRank"></div><b id="tagName">YOU</b><span id="tagAgent"></span></div>
@@ -141,6 +142,28 @@
       <div id="settingsSlot"></div>
       <button class="panel-close">CLOSE</button>
     </div>
+    <div id="accountPanel" class="lobby-panel account-panel hidden">
+      <h3>ACCOUNT</h3>
+      <div id="accOut">
+        <p class="acc-note">Make an account so your coins, skins, rank and settings save to the cloud and follow you to any Chromebook.</p>
+        <div class="acc-tabs"><button id="accTabIn" class="on">SIGN IN</button><button id="accTabUp">CREATE ACCOUNT</button></div>
+        <form id="accForm" autocomplete="on">
+          <label>USERNAME <input id="accUser" maxlength="16" autocomplete="username" spellcheck="false" placeholder="3-16 letters, numbers or _"></label>
+          <label>PASSWORD <input id="accPass" type="password" maxlength="64" autocomplete="current-password" placeholder="6+ characters"></label>
+          <label id="accPass2Row" class="hidden">CONFIRM PASSWORD <input id="accPass2" type="password" maxlength="64" autocomplete="new-password"></label>
+          <p id="accUpNote" class="acc-note small hidden">Your current coins, skins and rank move into the new account. There's no password reset, so don't forget it!</p>
+          <button id="accSubmit" type="submit" class="play-big acc-submit">SIGN IN</button>
+        </form>
+      </div>
+      <div id="accIn" class="hidden">
+        <div class="acc-who">Signed in as <b id="accName"></b></div>
+        <div id="accState" class="acc-state"></div>
+        <button id="accSignOut" class="lobby-small">SIGN OUT</button>
+      </div>
+      <div id="accError" class="acc-error"></div>
+      <button class="panel-close">CLOSE</button>
+    </div>
+
     <div id="controlsPanel" class="lobby-panel hidden">
       <h3>CONTROLS</h3>
       <div class="controls">
@@ -295,7 +318,7 @@
   </div>
   <script src="lib/peerjs.min.js"></script>
   <script>
-    window.GAME_VERSION = '20261031172740';
+    window.GAME_VERSION = '20261031174228';
     // If a script fails (often a stale cache after an update), show a clear message instead of a blank screen.
     function showLoadError(msg) {
       document.getElementById('loadError').classList.remove('hidden');
@@ -305,6 +328,6 @@
     window.addEventListener('unhandledrejection', (e) => { if (!window.__game) showLoadError(String(e.reason)); });
     setTimeout(() => { if (!window.__game) showLoadError('Game did not finish loading.'); }, 15000);
   </script>
-  <script type="module" src="js/main.js?v=20261031172740" onerror="showLoadError('A game file failed to load.')"></script>
+  <script type="module" src="js/main.js?v=20261031174228" onerror="showLoadError('A game file failed to load.')"></script>
 </body>
 </html>

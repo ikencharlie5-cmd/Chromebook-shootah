@@ -1,4 +1,5 @@
 // Weapon / knife skins, rarities and the player's locker profile (saved in localStorage).
+import { markDirty } from './account.js?v=20261031174228';
 
 export const RARITY = {
   common: { name: 'Common', color: '#a8b2bd', weight: 58 },
@@ -56,7 +57,7 @@ export function loadProfile() {
   p.equipped = p.equipped || {};
   return p;
 }
-export function saveProfile(p) { localStorage.setItem(STORE, JSON.stringify(p)); }
+export function saveProfile(p) { localStorage.setItem(STORE, JSON.stringify(p)); markDirty(); }
 
 // The skin equipped for a weapon (falls back to factory).
 export function equippedFor(profile, weapon) {

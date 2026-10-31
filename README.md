@@ -178,3 +178,33 @@ js/audio.js                 synthesized WebAudio sound effects
 
 Maps are plain ASCII grids in `js/maps.js` (see the legend at the top of that file), so they're easy to edit. `game.startMatch(agentId, mapId)` accepts a
 map id, ready for matchmaking to choose the map later.
+
+## Cloud accounts (Firebase setup)
+
+Accounts (username + password) save coins, skins, rank and settings to the cloud so they follow you to any device.
+They stay switched off until you add a free Firebase project:
+
+1. Go to https://console.firebase.google.com → **Create a project** (Google Analytics can be off).
+2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable → Save.**
+   (Usernames are stored as `name@players.shootah.game` behind the scenes; no real email is needed.)
+3. **Build → Firestore Database → Create database** → any location → **Start in production mode**.
+4. In Firestore, open the **Rules** tab, paste this and click **Publish**:
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid} {
+         allow read: if request.auth != null && request.auth.uid == uid;
+         allow write: if request.auth != null && request.auth.uid == uid
+           && request.resource.data.data.size() < 200000;
+       }
+     }
+   }
+   ```
+5. **Project settings (gear) → General → Your apps → Web (`</>`)** → register an app (no hosting needed).
+   Copy `apiKey` and `projectId` from the config it shows into `js/firebase-config.js`.
+6. **Authentication → Settings → Authorized domains** → add `ikencharlie5-cmd.github.io`.
+
+How saving works: while signed in, every save is uploaded a second or two later (and when the tab closes).
+On load, the newest cloud copy wins. Signing out restores this device's guest progress. There is no password reset.
