@@ -86,7 +86,11 @@ export class Game {
   loadMap(def) {
     if (this.scene) disposeScene(this.scene);
     this.scene = new THREE.Scene();
-    this.map = new GameMap(this.scene, def);
+    const q = this.settings.quality;
+    this.shadows = q === 'high' ? 'high' : q === 'medium' ? 'medium' : false;
+    this.renderer.shadowMap.enabled = !!this.shadows;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.map = new GameMap(this.scene, def, { shadows: this.shadows });
     this.effects = new Effects(this.scene);
     this.abilities = new Abilities(this);
     const core = buildCore();
@@ -134,7 +138,8 @@ export class Game {
       const team = i < TEAM_SIZE ? 0 : 1;
       const agent = team === 0 ? allyPool.pop() : enemyPool.pop();
       const c = new Combatant(i, names[i], team, false, agent);
-      c.model = buildCharacter(agent, team === this.playerTeam ? ALLY_LIGHT : ENEMY_LIGHT);
+      c.model = buildCharacter(agent, team === this.playerTeam ? ALLY_LIGHT : ENEMY_LIGHT, team !== this.playerTeam);
+      if (this.shadows) c.model.root.traverse((o) => { if (o.isMesh && !o.userData.noShadow) o.castShadow = true; });
       this.scene.add(c.model.root);
       if (team !== this.playerTeam) {
         c.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTex, depthTest: false, transparent: true }));
@@ -201,7 +206,7 @@ export class Game {
       c.switchT = 0;
       const side = this.sideOf(c.team);
       const cell = spawnCells[side === 'ATK' ? 'T' : 'D'].pop();
-      this.map.center(cell[0], cell[1], c.pos);
+      this.map.groundCenter(cell[0], cell[1], c.pos);
       c.pos.x += rand(-0.6, 0.6); c.pos.z += rand(-0.6, 0.6);
       c.yaw = side === 'ATK' ? 0 : Math.PI;
       c.pitch = 0;
@@ -1044,11 +1049,11 @@ export class Game {
     const m = buildCharacter(agent, ALLY_LIGHT);
     setCharacterGun(m, 'talon');
     animateCharacter(m, { speed: 0, crouch: 0, pitch: -0.05, onGround: true }, 0);
-    m.root.rotation.y = -0.55;
+    m.root.rotation.y = -0.4;
     scene.add(m.root);
-    const cam = new THREE.PerspectiveCamera(28, w / h, 0.1, 20);
-    cam.position.set(0.35, 1.35, -3.1);
-    cam.lookAt(0, 1.05, 0);
+    const cam = new THREE.PerspectiveCamera(26, w / h, 0.1, 20);
+    cam.position.set(0.25, 1.55, -2.35);
+    cam.lookAt(0, 1.3, 0);
     const r = this.renderer, pr = r.getPixelRatio();
     r.setScissorTest(true);
     r.setViewport(0, 0, w, h);

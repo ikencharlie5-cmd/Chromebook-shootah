@@ -312,6 +312,8 @@ export class BotBrain {
       return ai.pathIdx < ai.path.length || !last;
     }
     c.wx = dx / d; c.wz = dz / d;
+    // hop up onto ledges
+    if (c.onGround && d < 2.4 && !map.isStair(cx, cz) && map.cellHeight(cx, cz) - c.pos.y > 0.45) c.vel.y = 7;
 
     // light separation from teammates so they don't stack
     for (const o of this.game.combatants) {

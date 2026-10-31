@@ -111,44 +111,75 @@ function overlaps(p, r, h, b) {
          p.y + h > b.minY + 1e-4 && p.y < b.maxY - 1e-4;
 }
 
-// Moves a combatant through the world with axis-separated AABB collision.
+const STEP = 0.45;
+
+// Can the body stand at height y without hitting anything?
+function clearAt(boxes, p, r, h, y) {
+  for (const b of boxes) {
+    if (p.x + r > b.minX && p.x - r < b.maxX && p.z + r > b.minZ && p.z - r < b.maxZ &&
+        y + h > b.minY + 1e-4 && y < b.maxY - 1e-4) return false;
+  }
+  return true;
+}
+
+function resolveAxis(map, c, axis, delta, restrict) {
+  const p = c.pos, v = c.vel, r = c.radius, h = c.height, boxes = map.boxes;
+  const old = p[axis];
+  p[axis] += delta;
+  const vel = axis === 'x' ? v.x : v.z;
+  for (const b of boxes) {
+    if (!overlaps(p, r, h, b)) continue;
+    // walk up small steps (stairs, curbs)
+    const rise = b.maxY - p.y;
+    if (rise > 0 && rise <= STEP && (c.onGround || c.wasGround) && clearAt(boxes, p, r, h, b.maxY + 1e-3)) {
+      p.y = b.maxY + 1e-3;
+      continue;
+    }
+    const min = axis === 'x' ? b.minX : b.minZ, max = axis === 'x' ? b.maxX : b.maxZ;
+    if (vel > 0) p[axis] = min - r - 1e-3;
+    else if (vel < 0) p[axis] = max + r + 1e-3;
+    else p[axis] = p[axis] < (min + max) / 2 ? min - r - 1e-3 : max + r + 1e-3;
+    if (axis === 'x') v.x = 0; else v.z = 0;
+  }
+  if (restrict && map.charAt(p.x, p.z) !== restrict) {
+    p[axis] = old;
+    if (axis === 'x') v.x = 0; else v.z = 0;
+  }
+}
+
+// Moves a combatant through the world with axis-separated AABB collision and step-up.
 // `restrict` (optional) is a map character the combatant must stay on (buy-phase barrier).
 export function moveBody(map, c, dt, restrict) {
   const p = c.pos, v = c.vel, r = c.radius, h = c.height;
-  const boxes = map.boxes;
-
-  const ox = p.x;
-  p.x += v.x * dt;
-  for (const b of boxes) {
-    if (!overlaps(p, r, h, b)) continue;
-    if (v.x > 0) p.x = b.minX - r - 1e-3;
-    else if (v.x < 0) p.x = b.maxX + r + 1e-3;
-    else p.x = p.x < (b.minX + b.maxX) / 2 ? b.minX - r - 1e-3 : b.maxX + r + 1e-3;
-    v.x = 0;
-  }
-  if (restrict && map.charAt(p.x, p.z) !== restrict) { p.x = ox; v.x = 0; }
-
-  const oz = p.z;
-  p.z += v.z * dt;
-  for (const b of boxes) {
-    if (!overlaps(p, r, h, b)) continue;
-    if (v.z > 0) p.z = b.minZ - r - 1e-3;
-    else if (v.z < 0) p.z = b.maxZ + r + 1e-3;
-    else p.z = p.z < (b.minZ + b.maxZ) / 2 ? b.minZ - r - 1e-3 : b.maxZ + r + 1e-3;
-    v.z = 0;
-  }
-  if (restrict && map.charAt(p.x, p.z) !== restrict) { p.z = oz; v.z = 0; }
+  c.wasGround = c.onGround;
+  resolveAxis(map, c, 'x', v.x * dt, restrict);
+  resolveAxis(map, c, 'z', v.z * dt, restrict);
 
   const wasGround = c.onGround;
   c.onGround = false;
   p.y += v.y * dt;
-  for (const b of boxes) {
+  for (const b of map.boxes) {
     if (!overlaps(p, r, h, b)) continue;
     if (v.y <= 0) { p.y = b.maxY; c.onGround = true; }
     else p.y = b.minY - h;
     v.y = 0;
   }
   if (p.y <= 0) { p.y = 0; v.y = 0; c.onGround = true; }
+  // stick to the ground when walking down stairs
+  if (!c.onGround && wasGround && v.y <= 0) {
+    for (let k = 1; k <= 3; k++) {
+      const y = p.y - k * 0.15;
+      if (!clearAt(map.boxes, p, r, h, y) || y <= 0) {
+        // find the surface just below
+        let top = 0;
+        for (const b of map.boxes) {
+          if (p.x + r > b.minX && p.x - r < b.maxX && p.z + r > b.minZ && p.z - r < b.maxZ && b.maxY <= p.y + 1e-3) top = Math.max(top, b.maxY);
+        }
+        if (p.y - top <= STEP + 0.01) { p.y = top; v.y = 0; c.onGround = true; }
+        break;
+      }
+    }
+  }
   return !wasGround && c.onGround;
 }
 

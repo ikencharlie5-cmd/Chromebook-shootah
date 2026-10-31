@@ -45,6 +45,7 @@ export const AGENTS = [
     id: 'haze', name: 'Haze', role: 'Controller',
     bio: 'Shapes the battlefield with smoke and fire.',
     suit: 0x3d3560, suit2: 0x1b1828, accent: 0xb88cff, look: 'hood',
+    skin: 0x8d5a3b, hair: 0x1c1626, outfit: 0x4a3a78, outfit2: 0x241c38, pants: 0x2a2433, shoes: 0x1a1a1f, glove: 0x2a2433, mood: 'calm', style: 'hood',
     kit: {
       q: { type: 'molly', price: 200, max: 1 },
       e: { type: 'smoke', free: 2, max: 2 },
@@ -56,6 +57,7 @@ export const AGENTS = [
     id: 'vesper', name: 'Vesper', role: 'Sentinel',
     bio: 'Keeps the team alive and locks down lanes.',
     suit: 0xe6e3da, suit2: 0x4f5864, accent: 0x5dffb0, look: 'halo',
+    skin: 0xf2cdb4, hair: 0xd8dce4, outfit: 0xf2f2ee, outfit2: 0x5dd6a0, pants: 0x3a6a72, shoes: 0xe8e8e8, glove: 0xf2f2ee, mood: 'kind', style: 'medic',
     kit: {
       q: { type: 'wall', price: 300, max: 1 },
       e: { type: 'heal', free: 1, max: 1 },
@@ -67,6 +69,7 @@ export const AGENTS = [
     id: 'flare', name: 'Flare', role: 'Initiator',
     bio: 'Blinds and scouts to break open a site.',
     suit: 0xf0b030, suit2: 0x3a2e1a, accent: 0xfff27a, look: 'antenna',
+    skin: 0xc68642, hair: 0xe0702a, outfit: 0xf2b630, outfit2: 0xfff2d8, pants: 0x6a5238, shoes: 0x3a2a1a, glove: 0x6a5238, mood: 'happy', style: 'afro',
     kit: {
       q: { type: 'flash', price: 200, max: 2 },
       e: { type: 'recon', free: 1, max: 1 },
@@ -78,6 +81,7 @@ export const AGENTS = [
     id: 'ember', name: 'Ember', role: 'Duelist',
     bio: 'Dashes in and burns enemies out of cover.',
     suit: 0xc23c2a, suit2: 0x2a1412, accent: 0xff9a3c, look: 'spikes',
+    skin: 0xf5c6a5, hair: 0xd8361e, outfit: 0xb8281e, outfit2: 0x1f1a1a, pants: 0x22222a, shoes: 0x111114, glove: 0x1f1a1a, mood: 'angry', style: 'spiky',
     kit: {
       q: { type: 'molly', price: 200, max: 1 },
       e: { type: 'dash', free: 1, max: 1 },
@@ -89,6 +93,7 @@ export const AGENTS = [
     id: 'jolt', name: 'Jolt', role: 'Duelist',
     bio: 'Hyper-fast fighter who heals up between fights.',
     suit: 0x2a86f2, suit2: 0x101e36, accent: 0x7ff6ff, look: 'fin',
+    skin: 0x5a3825, hair: 0x2aa8ff, outfit: 0x1f6fe0, outfit2: 0x101828, pants: 0x1e2230, shoes: 0xf2f2f2, glove: 0x101828, mood: 'grin', style: 'mohawk',
     kit: {
       q: { type: 'flash', price: 200, max: 2 },
       e: { type: 'dash', free: 2, max: 2 },
@@ -100,6 +105,7 @@ export const AGENTS = [
     id: 'rook', name: 'Rook', role: 'Initiator',
     bio: 'Armored breacher who floods sites with flashes.',
     suit: 0x5a6848, suit2: 0x20261a, accent: 0xc6ff4a, look: 'bulky',
+    skin: 0xa47148, hair: 0x4a2e1a, outfit: 0x56653f, outfit2: 0x2c3322, pants: 0x3f4632, shoes: 0x2a2018, glove: 0x2c3322, mood: 'stern', style: 'beard',
     kit: {
       q: { type: 'smoke', price: 150, max: 1 },
       e: { type: 'flash', free: 2, max: 2 },

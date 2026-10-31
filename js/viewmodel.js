@@ -1,5 +1,21 @@
 import * as THREE from '../lib/three.module.min.js';
-import { buildGun, buildFlash, phong, glow } from './models.js';
+import { buildGun, buildFlash, glow } from './models.js';
+import { toonGradient, outlineMaterial } from './people.js';
+
+const toonCache = new Map();
+function toon(color) {
+  if (!toonCache.has(color)) toonCache.set(color, new THREE.MeshToonMaterial({ color, gradientMap: toonGradient }));
+  return toonCache.get(color);
+}
+const OUTLINE = outlineMaterial(0x101418, 0.005);
+
+// Adds a mesh plus a thin cartoon outline shell.
+function inked(parent, geo, material) {
+  const m = new THREE.Mesh(geo, material);
+  m.add(new THREE.Mesh(geo, OUTLINE));
+  parent.add(m);
+  return m;
+}
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const _up = new THREE.Vector3(0, 1, 0);
@@ -21,7 +37,7 @@ function part(parent, w, h, d, material, x, y, z, rx = 0, ry = 0, rz = 0) {
   return m;
 }
 
-// Forearm from wrist to elbow: tapered sleeve, hex armor plate, glowing seam, glove cuff.
+// Forearm from wrist to elbow: sleeve (or bare arm), cuff and accent band.
 function forearm(parent, wrist, elbow, m) {
   const dir = new THREE.Vector3().subVectors(elbow, wrist);
   const len = dir.length();
@@ -29,42 +45,56 @@ function forearm(parent, wrist, elbow, m) {
   g.position.copy(wrist);
   g.quaternion.setFromUnitVectors(_up, dir.normalize());
   parent.add(g);
-  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.027, len, 12), m.sleeve);
-  sleeve.position.y = len / 2;
-  const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.036, len * 0.42, 6), m.armor);
-  plate.position.y = len * 0.42;
-  const seam = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.046, 0.008, 6), m.accent);
-  seam.position.y = len * 0.21;
-  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.031, 0.035, 12), m.glove);
-  cuff.position.y = 0.012;
-  g.add(sleeve, plate, seam, cuff);
+  const wristBit = inked(g, new THREE.CapsuleGeometry(0.03, 0.08, 4, 10), m.skin);
+  wristBit.position.y = 0.04;
+  if (m.bare) {
+    const arm = inked(g, new THREE.CylinderGeometry(0.046, 0.034, len, 14), m.skin);
+    arm.position.y = len / 2;
+    const band = inked(g, new THREE.CylinderGeometry(0.037, 0.037, 0.035, 14), m.cuff);
+    band.position.y = 0.07;
+    const tat = new THREE.Mesh(new THREE.BoxGeometry(0.012, len * 0.35, 0.012), m.accent);
+    tat.position.set(0.0, len * 0.55, -0.044);
+    tat.rotation.x = 0.1;
+    g.add(tat);
+  } else {
+    const sleeve = inked(g, new THREE.CylinderGeometry(0.058, 0.046, len - 0.07, 14), m.sleeve);
+    sleeve.position.y = 0.07 + (len - 0.07) / 2;
+    const cuff = inked(g, new THREE.CylinderGeometry(0.05, 0.05, 0.045, 14), m.cuff);
+    cuff.position.y = 0.085;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.059, 0.059, 0.012, 14), m.accent);
+    band.position.y = len * 0.55;
+    g.add(band);
+  }
   return g;
 }
 
-// A gloved hand: palm plus jointed fingers curled around a grip.
+// A chunky cartoon hand: palm plus jointed sausage fingers curled around a grip.
 // side = 1 for right hand, -1 for left. curl ~ 0 (open) .. 1.6 (fist).
-function hand(parent, glove, knuckle, side, curl = 1.3) {
+function hand(parent, m, side, curl = 1.3) {
   const h = new THREE.Group();
   parent.add(h);
-  part(h, 0.075, 0.03, 0.085, glove, 0, 0, 0);
-  part(h, 0.072, 0.012, 0.06, knuckle, 0, 0.018, -0.005);
+  inked(h, new THREE.BoxGeometry(0.085, 0.04, 0.09), m.glove);
+  const fingerMat = m.fingerless ? m.skin : m.glove;
   for (let i = 0; i < 4; i++) {
     const f = new THREE.Group();
-    f.position.set((i - 1.5) * 0.019 * side, 0, -0.045);
+    f.position.set((i - 1.5) * 0.021 * side, 0, -0.045);
     h.add(f);
-    part(f, 0.016, 0.018, 0.035, glove, 0, 0, -0.016);
+    const a = inked(f, new THREE.CapsuleGeometry(0.0115, 0.022, 3, 8), m.fingerless ? m.glove : fingerMat);
+    a.rotation.x = Math.PI / 2; a.position.z = -0.014;
     const j = new THREE.Group();
-    j.position.set(0, 0, -0.034);
+    j.position.set(0, 0, -0.03);
     j.rotation.x = -curl * 0.8;
     f.add(j);
-    part(j, 0.015, 0.016, 0.03, glove, 0, 0, -0.014);
+    const b = inked(j, new THREE.CapsuleGeometry(0.011, 0.022, 3, 8), fingerMat);
+    b.rotation.x = Math.PI / 2; b.position.z = -0.014;
     f.rotation.x = -curl * 0.6;
   }
   const thumb = new THREE.Group();
-  thumb.position.set(0.04 * side, -0.005, -0.015);
-  thumb.rotation.set(-0.4, 0.7 * side, 0);
+  thumb.position.set(0.045 * side, -0.004, -0.012);
+  thumb.rotation.set(-0.4, 0.75 * side, 0);
   h.add(thumb);
-  part(thumb, 0.018, 0.018, 0.045, glove, 0, 0, -0.02);
+  const t = inked(thumb, new THREE.CapsuleGeometry(0.013, 0.03, 3, 8), fingerMat);
+  t.rotation.x = Math.PI / 2; t.position.z = -0.022;
   return h;
 }
 
@@ -117,7 +147,7 @@ export class ViewModel {
     this.castArm.clear();
     const m = this.mats();
     forearm(this.castArm, V(-0.01, -0.03, 0.05), V(-0.12, -0.24, 0.4), m);
-    const hd = hand(this.castArm, m.glove, m.plate, -1, 0.9);
+    const hd = hand(this.castArm, m, -1, 0.9);
     hd.rotation.x = 0.2;
     this.orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.026, 1), this.orbMat);
     this.orb.position.set(0, 0.035, -0.05);
@@ -125,14 +155,15 @@ export class ViewModel {
   }
 
   mats() {
-    const a = this.agent || { suit: 0x2a86f2, suit2: 0x1a1d22, accent: 0x7ff6ff };
-    const armor = new THREE.Color(a.suit).lerp(new THREE.Color(0xffffff), 0.12).getHex();
+    const a = this.agent || { skin: 0xc68642, outfit: 0x2a86f2, outfit2: 0x1a1d22, glove: 0x1a1d22, accent: 0x7ff6ff, style: '' };
     return {
-      sleeve: phong(new THREE.Color(a.suit2).lerp(new THREE.Color(a.suit), 0.35).getHex(), 20),
-      armor: phong(armor, 70),
-      glove: phong(0x1b1d22, 25),
-      plate: phong(0x2c3038, 80),
+      skin: toon(a.skin),
+      sleeve: toon(a.outfit),
+      cuff: toon(a.outfit2),
+      glove: toon(a.glove),
       accent: glow(a.accent),
+      bare: a.style === 'mohawk',
+      fingerless: a.style === 'spiky' || a.style === 'mohawk',
     };
   }
 
@@ -143,14 +174,14 @@ export class ViewModel {
     const knife = id === 'knife';
 
     // right hand on the grip, forearm running back toward the bottom-right of the screen
-    const rh = hand(group, m.glove, m.plate, 1, knife ? 1.5 : 1.3);
+    const rh = hand(group, m, 1, knife ? 1.5 : 1.3);
     rh.position.set(0.005, -0.045, 0.02);
     rh.rotation.set(0.25, 0, Math.PI / 2 - 0.25);
     forearm(group, V(0.012, -0.075, 0.07), knife ? V(0.12, -0.3, 0.42) : V(0.15, -0.32, 0.4), m);
     if (!knife) {
       // left hand under the handguard (or cupping the pistol grip)
       const lz = pistol ? 0.015 : -0.26;
-      const lh = hand(group, m.glove, m.plate, -1, 1.1);
+      const lh = hand(group, m, -1, 1.1);
       lh.position.set(-0.03, pistol ? -0.06 : -0.035, lz);
       lh.rotation.set(0.1, 0, pistol ? -Math.PI / 2 + 0.4 : -Math.PI / 2 + 0.15);
       const wrist = V(-0.045, -0.075, lz + 0.05);

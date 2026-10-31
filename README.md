@@ -47,14 +47,16 @@ settings, the game also locks the keyboard so Ctrl works for crouching.
 Each agent has three abilities and an ultimate. **E** (signature) refills for free every round; **Q** and **F** charges
 are bought in the buy menu and carry over between rounds. Ultimates charge from kills, deaths, plants and defuses.
 
-| Agent | Role | Q | E (free) | F | X (ultimate) |
-| --- | --- | --- | --- | --- | --- |
-| Haze | Controller | Incendiary | Smoke ×2 | Barrier wall | Nightfall — line of 4 smokes |
-| Vesper | Sentinel | Barrier wall | Mend (heal) | Recon dart | Lifeline — heal team + shields |
-| Flare | Initiator | Flashbang ×2 | Recon dart | Smoke | Overwatch — reveal all enemies |
-| Ember | Duelist | Incendiary | Dash | Flashbang | Inferno — huge firestorm |
-| Jolt | Duelist | Flashbang ×2 | Dash ×2 | Mend (heal) | Overdrive — speed, fire rate, accuracy |
-| Rook | Initiator | Smoke | Flashbang ×2 | Incendiary | Blackout — blind everyone who sees you |
+| Agent | Look | Role | Q | E (free) | F | X (ultimate) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Haze | Hooded mystic, glowing tattoos, long coat | Controller | Incendiary | Smoke ×2 | Barrier wall | Nightfall — line of 4 smokes |
+| Vesper | Silver-haired medic with round glasses | Sentinel | Barrier wall | Mend (heal) | Recon dart | Lifeline — heal team + shields |
+| Flare | Big orange afro, goggles, bomber jacket | Initiator | Flashbang ×2 | Recon dart | Smoke | Overwatch — reveal all enemies |
+| Ember | Spiky red hair, freckles, leather jacket | Duelist | Incendiary | Dash | Flashbang | Inferno — huge firestorm |
+| Jolt | Blue mohawk, headphones, lightning tattoo | Duelist | Flashbang ×2 | Dash ×2 | Mend (heal) | Overdrive — speed, fire rate, accuracy |
+| Rook | Bald, big beard, heavy plate carrier | Initiator | Smoke | Flashbang ×2 | Incendiary | Blackout — blind everyone who sees you |
+
+Agents are cel-shaded cartoon people. Enemies always have a **red outline** and your team wears a teal armband.
 
 - **Smokes** land where you aim and block vision (for bots too).
 - **Flashes** pop after a moment and blind enemies who are looking at them — turn away!
@@ -64,7 +66,10 @@ are bought in the buy menu and carry over between rounds. Ultimates charge from 
 
 ## Maps
 
-All maps are compact two-site layouts built for 3v3, and the map is picked at random each match.
+All maps are compact two-site layouts built for 3v3, and the map is picked at random each match. They have
+height to fight over — balconies and raised platforms with stairs, 1m ledges you can jump onto, raised bridges —
+plus buildings you can walk through, windows you can see and shoot through (and vault, if you crouch-jump),
+archways, real-time shadows (Medium/High graphics) and lots of props.
 
 | Map | Theme |
 | --- | --- |
@@ -111,12 +116,13 @@ js/abilities.js             smokes, flashes, fire, recon, walls, heals, dashes, 
 js/bots.js                  bot AI (perception, aiming, objectives, ability usage)
 js/entities.js              players/bots, hitboxes, movement + collision
 js/weapons.js               weapon stats and recoil patterns
-js/viewmodel.js             first-person gun and agent-styled arms
-js/models.js                agent characters, guns, the Core
+js/viewmodel.js             first-person gun and cartoon hands styled after your agent
+js/people.js                cartoon agent characters (faces, hair, outfits), outlines, animation
+js/models.js                guns, the Core
 js/effects.js               tracers, bullet holes, particles, explosion
 js/hud.js                   HUD, ability bar, minimap, killfeed, scoreboard, buy menu
 js/audio.js                 synthesized WebAudio sound effects
 ```
 
-Maps are plain ASCII grids in `js/maps.js`, so they're easy to edit. `game.startMatch(agentId, mapId)` accepts a
+Maps are plain ASCII grids in `js/maps.js` (see the legend at the top of that file), so they're easy to edit. `game.startMatch(agentId, mapId)` accepts a
 map id, ready for matchmaking to choose the map later.

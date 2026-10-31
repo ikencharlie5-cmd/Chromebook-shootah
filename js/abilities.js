@@ -84,12 +84,7 @@ export class Abilities {
   }
 
   groundAt(x, z) {
-    let y = 0;
-    for (const b of this.game.map.boxes) {
-      if (b.kind !== 'cover') continue;
-      if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) y = Math.max(y, b.maxY);
-    }
-    return y;
+    return this.game.map.heightAt(x, z);
   }
 
   handPos(c) {

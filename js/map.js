@@ -5,9 +5,14 @@ export const CELL = 3;
 const LOW_H = 1.1;
 const HIGH_H = 2.4;
 const WATER_Y = -1.0;
+const LEVEL = { 1: 1.0, 2: 2.4, 3: 3.6 };
+const STAIRS = { '^': [0, -1], v: [0, 1], '<': [-1, 0], '>': [1, 0] };
+const BLOCKING = new Set(['#', 'C', 'c', 'o', '~', 'w']);
+const SILL = 1.1, WIN_TOP = 2.5, ARCH_TOP = 3.1, CEIL = 4.0;
 
 export class GameMap {
-  constructor(scene, def) {
+  constructor(scene, def, opts = {}) {
+    this.opts = opts;
     this.def = def;
     this.name = def.name;
     this.rows = def.rows;
@@ -30,8 +35,71 @@ export class GameMap {
   }
 
   walkable(cx, cz) {
+    return !BLOCKING.has(this.ch(cx, cz));
+  }
+
+  isStair(cx, cz) { return !!STAIRS[this.ch(cx, cz)]; }
+
+  // Floor height of a plain (non-stair) cell.
+  baseHeight(cx, cz) {
     const c = this.ch(cx, cz);
-    return c !== '#' && c !== 'C' && c !== 'c' && c !== 'o' && c !== '~';
+    return LEVEL[c] ?? 0;
+  }
+
+  // Low and high ends of a stair cell.
+  stairInfo(cx, cz) {
+    const [dx, dz] = STAIRS[this.ch(cx, cz)];
+    return { dx, dz, lo: this.baseHeight(cx - dx, cz - dz), hi: this.baseHeight(cx + dx, cz + dz) };
+  }
+
+  cellHeight(cx, cz) {
+    if (this.isStair(cx, cz)) { const s = this.stairInfo(cx, cz); return (s.lo + s.hi) / 2; }
+    return this.baseHeight(cx, cz);
+  }
+
+  // Ground height at a world position (floors, platforms, stairs and cover tops).
+  heightAt(x, z) {
+    const cx = this.cellX(x), cz = this.cellZ(z);
+    if (this.isStair(cx, cz)) {
+      const s = this.stairInfo(cx, cz);
+      const fx = (x - this.ox) / CELL - cx, fz = (z - this.oz) / CELL - cz;
+      let t = s.dx > 0 ? fx : s.dx < 0 ? 1 - fx : s.dz > 0 ? fz : 1 - fz;
+      t = Math.max(0, Math.min(1, t));
+      return s.lo + (s.hi - s.lo) * Math.ceil(t * this.stepCount(s) ) / this.stepCount(s);
+    }
+    let y = this.baseHeight(cx, cz);
+    for (const b of this.boxes) {
+      if (b.kind !== 'cover') continue;
+      if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) y = Math.max(y, b.maxY);
+    }
+    return y;
+  }
+
+  stepCount(s) { return Math.max(2, Math.round(Math.abs(s.hi - s.lo) / 0.3)); }
+
+  // Can a bot walk from cell a to neighbouring cell b?
+  edgeOK(ax, az, bx, bz) {
+    if (!this.walkable(bx, bz)) return false;
+    const mx = bx - ax, mz = bz - az;
+    const sa = this.isStair(ax, az), sb = this.isStair(bx, bz);
+    if (sa || sb) {
+      if (mx && mz) return false;
+      for (const [cx, cz, on] of [[ax, az, sa], [bx, bz, sb]]) {
+        if (!on) continue;
+        const s = this.stairInfo(cx, cz);
+        if (Math.abs(s.dx) !== Math.abs(mx) || Math.abs(s.dz) !== Math.abs(mz)) return false;
+      }
+      return true;
+    }
+    const ha = this.baseHeight(ax, az), hb = this.baseHeight(bx, bz);
+    if (mx && mz) {
+      if (!this.walkable(ax + mx, az) || !this.walkable(ax, az + mz)) return false;
+      if (this.isStair(ax + mx, az) || this.isStair(ax, az + mz)) return false;
+      if (ha !== hb || this.baseHeight(ax + mx, az) !== ha || this.baseHeight(ax, az + mz) !== ha) return false;
+    }
+    if (hb - ha > 1.05) return false; // too high to climb (1.0 ledges need a jump)
+    if (ha - hb > 2.6) return false;  // too far to drop
+    return true;
   }
 
   cellX(x) { return Math.floor((x - this.ox) / CELL); }
@@ -40,6 +108,13 @@ export class GameMap {
 
   center(cx, cz, out = new THREE.Vector3()) {
     return out.set(this.ox + (cx + 0.5) * CELL, 0, this.oz + (cz + 0.5) * CELL);
+  }
+
+  // Cell centre standing on the floor.
+  groundCenter(cx, cz, out = new THREE.Vector3()) {
+    this.center(cx, cz, out);
+    out.y = this.cellHeight(cx, cz);
+    return out;
   }
 
   siteAt(x, z) {
@@ -84,17 +159,19 @@ export class GameMap {
     const def = this.def;
     let seed = 0;
     for (const ch of def.id) seed = seed * 31 + ch.charCodeAt(0);
-    const { th, rng, b, mats } = buildTheme(def.theme, this, scene, seed);
+    const { th, rng, b, bb, mats } = buildTheme(def.theme, this, scene, seed, this.opts);
     this.theme = th;
+    const W = this.W, H = this.H;
+    const wx = (x) => this.ox + x * CELL, wz = (z) => this.oz + z * CELL;
 
-    // --- wall blocks: horizontal runs merged vertically into rectangles
+    // --- solid wall blocks: horizontal runs merged vertically into rectangles
     const runs = [];
-    for (let z = 0; z < this.H; z++) {
+    for (let z = 0; z < H; z++) {
       let x = 0;
-      while (x < this.W) {
+      while (x < W) {
         if (this.ch(x, z) === '#') {
           let x1 = x;
-          while (x1 + 1 < this.W && this.ch(x1 + 1, z) === '#') x1++;
+          while (x1 + 1 < W && this.ch(x1 + 1, z) === '#') x1++;
           runs.push({ x0: x, x1, z0: z, z1: z });
           x = x1 + 1;
         } else x++;
@@ -105,58 +182,171 @@ export class GameMap {
       const prev = rects.find((m) => m.x0 === r.x0 && m.x1 === r.x1 && m.z1 === r.z0 - 1);
       if (prev) prev.z1 = r.z0; else rects.push({ ...r });
     }
-    const heightGrid = new Float32Array(this.W * this.H);
+    const heightGrid = new Float32Array(W * H);
     for (const m of rects) {
-      const border = m.x0 === 0 || m.z0 === 0 || m.x1 === this.W - 1 || m.z1 === this.H - 1;
+      const border = m.x0 === 0 || m.z0 === 0 || m.x1 === W - 1 || m.z1 === H - 1;
       const [h0, h1] = th.wallHeight;
       const h = Math.round((h0 + rng() * (h1 - h0) + (border ? 2 : 0)) * 2) / 2;
       m.h = h;
-      for (let z = m.z0; z <= m.z1; z++) for (let x = m.x0; x <= m.x1; x++) heightGrid[z * this.W + x] = h;
-      const bx = {
-        minX: this.ox + m.x0 * CELL, maxX: this.ox + (m.x1 + 1) * CELL,
-        minZ: this.oz + m.z0 * CELL, maxZ: this.oz + (m.z1 + 1) * CELL,
-        minY: 0, maxY: h,
-      };
-      const color = th.wallColors[Math.floor(rng() * th.wallColors.length)];
-      b.addBox('wall', { ...bx, minY: -1.6 }, color, th.wallUv, 0.35);
+      for (let z = m.z0; z <= m.z1; z++) for (let x = m.x0; x <= m.x1; x++) heightGrid[z * W + x] = h;
+      const bx = { minX: wx(m.x0), maxX: wx(m.x1 + 1), minZ: wz(m.z0), maxZ: wz(m.z1 + 1), minY: 0, maxY: h };
+      m.color = th.wallColors[Math.floor(rng() * th.wallColors.length)];
+      b.addBox('wall', { ...bx, minY: -1.6 }, m.color, th.wallUv, 0.35);
       this.boxes.push({ ...bx, maxY: 60, kind: 'wall' });
       this.addTrim(b, bx, th, rng);
     }
-    this.blocks = { rects, heightAt: (cx, cz) => heightGrid[cz * this.W + cx] || 6 };
+    const neighborWallH = (x, z) => {
+      let h = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) h = Math.max(h, heightGrid[(z + dz) * W + (x + dx)] || 0);
+      return h || th.wallHeight[0];
+    };
+    const wallColorNear = (x, z) => {
+      for (const m of rects) if (x >= m.x0 - 1 && x <= m.x1 + 1 && z >= m.z0 - 1 && z <= m.z1 + 1) return m.color;
+      return th.wallColors[0];
+    };
 
-    // --- floors, cover, pillars, water
-    const floorCells = [], waterCells = [];
-    for (let z = 0; z < this.H; z++) {
-      for (let x = 0; x < this.W; x++) {
+    const floorCells = [], waterCells = [], indoorCells = [];
+    for (let z = 0; z < H; z++) {
+      for (let x = 0; x < W; x++) {
         const c = this.ch(x, z);
         if (c === '#') continue;
-        const minX = this.ox + x * CELL, minZ = this.oz + z * CELL;
-        if (c === '~') {
-          waterCells.push({ x, z });
-          this.boxes.push({ minX, maxX: minX + CELL, minZ, maxZ: minZ + CELL, minY: -5, maxY: 60, kind: 'water', noShot: true });
-          b.addBox('floor', { minX, maxX: minX + CELL, minZ, maxZ: minZ + CELL, minY: -3, maxY: WATER_Y - 1.2 }, 0x6a6a60, 1 / 3);
+        const minX = wx(x), minZ = wz(z), maxX = minX + CELL, maxZ = minZ + CELL;
+        const cell = { minX, maxX, minZ, maxZ };
+
+        // --- windows and archways sit in wall lines
+        if (c === 'w' || c === 'n') {
+          const top = neighborWallH(x, z), col = wallColorNear(x, z);
+          heightGrid[z * W + x] = top;
+          b.addBox('floor', { ...cell, minY: -1.6, maxY: 0 }, th.floorColor, 1 / 3);
+          const alongX = this.ch(x - 1, z) === '#' || this.ch(x + 1, z) === '#' || this.ch(x - 1, z) === 'w' || this.ch(x + 1, z) === 'w';
+          // the wall runs along X when its neighbours left/right are walls; thickness is the full cell
+          if (c === 'w') {
+            b.addBox('wall', { ...cell, minY: -1.6, maxY: SILL }, col, th.wallUv, 0.35);
+            b.addBox('wall', { ...cell, minY: WIN_TOP, maxY: top }, col, th.wallUv);
+            this.boxes.push({ ...cell, minY: 0, maxY: SILL, kind: 'wall' });
+            this.boxes.push({ ...cell, minY: WIN_TOP, maxY: 60, kind: 'wall' });
+            // frame and sill trim
+            const tc = th.trimColor ?? 0xe8e2d6;
+            b.addBox('plain', { ...cell, minY: SILL, maxY: SILL + 0.08, ...grow(cell, alongX, 0.08) }, tc);
+            b.addBox('plain', { ...cell, minY: WIN_TOP - 0.08, maxY: WIN_TOP, ...grow(cell, alongX, 0.08) }, tc);
+          } else {
+            b.addBox('wall', { ...cell, minY: ARCH_TOP, maxY: top }, col, th.wallUv);
+            this.boxes.push({ ...cell, minY: ARCH_TOP, maxY: 60, kind: 'wall' });
+            // posts at both ends of the opening
+            const post = 0.32;
+            const tc = th.trimColor ?? 0xe8e2d6;
+            if (alongX) {
+              b.addBox('plain', { minX, maxX: minX + post, minZ: minZ - 0.05, maxZ: maxZ + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
+              b.addBox('plain', { minX: maxX - post, maxX, minZ: minZ - 0.05, maxZ: maxZ + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
+            } else {
+              b.addBox('plain', { minZ, maxZ: minZ + post, minX: minX - 0.05, maxX: maxX + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
+              b.addBox('plain', { minZ: maxZ - post, maxZ, minX: minX - 0.05, maxX: maxX + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
+            }
+            b.addBox('plain', { ...grow(cell, alongX, 0.06), minY: ARCH_TOP - 0.05, maxY: ARCH_TOP + 0.25 }, tc);
+          }
           continue;
         }
+
+        if (c === '~') {
+          waterCells.push({ x, z });
+          this.boxes.push({ ...cell, minY: -5, maxY: 60, kind: 'water', noShot: true });
+          b.addBox('floor', { ...cell, minY: -3, maxY: WATER_Y - 1.2 }, 0x6a6a60, 1 / 3);
+          continue;
+        }
+
         floorCells.push({ x, z, ch: c });
+        const site = this.siteAt(minX + 1.5, minZ + 1.5);
         let col = th.floorColor;
-        if (c === 'A' || c === 'B') col = th.site[c];
+        if (site) col = th.site[site];
         else if (c === 'T' || c === 'D') col = th.spawn[c];
-        b.addBox('floor', { minX, maxX: minX + CELL, minZ, maxZ: minZ + CELL, minY: -1.6, maxY: 0 }, tintColor(col, rng, 0.06), 1 / 3);
+        else if (c === ',') col = th.indoorColor ?? 0xb08a64;
+        const floorKey = c === ',' ? 'indoor' : 'floor';
+
+        if (STAIRS[c]) {
+          // solid stepped block rising toward the stair direction
+          const sI = this.stairInfo(x, z), n = this.stepCount(sI);
+          b.addBox('floor', { ...cell, minY: -1.6, maxY: sI.lo }, col, 1 / 3);
+          if (sI.lo > 0) this.boxes.push({ ...cell, minY: 0, maxY: sI.lo, kind: 'floor' });
+          for (let k = 0; k < n; k++) {
+            const t0 = k / n, t1 = (k + 1) / n;
+            const y = sI.lo + (sI.hi - sI.lo) * (k + 1) / n;
+            const st = { ...cell, minY: sI.lo, maxY: y };
+            if (sI.dx > 0) { st.minX = minX + t0 * CELL; st.maxX = maxX; }
+            if (sI.dx < 0) { st.maxX = maxX - t0 * CELL; st.minX = minX; }
+            if (sI.dz > 0) { st.minZ = minZ + t0 * CELL; st.maxZ = maxZ; }
+            if (sI.dz < 0) { st.maxZ = maxZ - t0 * CELL; st.minZ = minZ; }
+            b.addBox('floor', st, shade(col, 0.9 + (k % 2) * 0.08), 1 / 3);
+            // collider: only the part of each step that is not covered by the next one
+            const cb = { ...st, kind: 'floor' };
+            if (sI.dx > 0) cb.maxX = minX + t1 * CELL;
+            if (sI.dx < 0) cb.minX = maxX - t1 * CELL;
+            if (sI.dz > 0) cb.maxZ = minZ + t1 * CELL;
+            if (sI.dz < 0) cb.minZ = maxZ - t1 * CELL;
+            if (k === n - 1) { cb.minX = st.minX; cb.maxX = st.maxX; cb.minZ = st.minZ; cb.maxZ = st.maxZ; }
+            this.boxes.push(cb);
+          }
+          continue;
+        }
+
+        const lvl = LEVEL[c] ?? 0;
+        if (lvl > 0) {
+          b.addBox('wall', { ...cell, minY: -1.6, maxY: lvl - 0.12 }, th.ledgeColor ?? th.wallColors[0], th.wallUv, 0.3);
+          b.addBox(floorKey, { ...cell, minY: lvl - 0.12, maxY: lvl }, col, 1 / 3);
+          this.boxes.push({ ...cell, minY: 0, maxY: lvl, kind: 'floor' });
+          // railings / lips where the platform drops off
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nc = this.ch(x + dx, z + dz);
+            if (BLOCKING.has(nc) && nc !== 'c' && nc !== 'C' && nc !== '~') continue;
+            if (STAIRS[nc] || (LEVEL[nc] ?? 0) >= lvl) continue;
+            const ex = dx ? (dx > 0 ? maxX : minX) : (minX + maxX) / 2, ez = dz ? (dz > 0 ? maxZ : minZ) : (minZ + maxZ) / 2;
+            b.add('plain', Geo.box, mat(ex - dx * 0.06, lvl + 0.06, ez - dz * 0.06, 0, dx ? 0.14 : CELL, 0.12, dz ? 0.14 : CELL), th.trimColor ?? 0xe8e2d6);
+            if (lvl >= 2 && th.railings !== false) {
+              b.add('plain', Geo.box, mat(ex - dx * 0.08, lvl + 0.95, ez - dz * 0.08, 0, dx ? 0.08 : CELL, 0.08, dz ? 0.08 : CELL), th.railColor ?? 0x3a3f48);
+              for (let k = 0; k < 4; k++) {
+                const o = -CELL / 2 + (k + 0.5) * CELL / 4;
+                b.add('plain', Geo.box, mat(ex - dx * 0.08 + (dz ? o : 0), lvl + 0.5, ez - dz * 0.08 + (dx ? o : 0), 0, 0.06, 0.9, 0.06), th.railColor ?? 0x3a3f48);
+              }
+            }
+          }
+        } else {
+          b.addBox(floorKey, { ...cell, minY: -1.6, maxY: 0 }, tintColor(col, rng, 0.06), 1 / 3);
+        }
+
+        if (c === ',') {
+          indoorCells.push({ x, z });
+          // ceiling slab; lamp panel every other cell
+          b.addBox('wall', { ...cell, minY: CEIL, maxY: CEIL + 0.4 }, th.ceilColor ?? 0xd8d0c4, th.wallUv);
+          this.boxes.push({ ...cell, minY: CEIL, maxY: CEIL + 0.4, kind: 'wall' });
+          if ((x + z) % 2 === 0) b.add('glow', Geo.box, mat(minX + 1.5, CEIL - 0.03, minZ + 1.5, 0, 1.2, 0.05, 0.5), th.indoorLight ?? 0xfff0d0);
+          // support posts on open corners so the roof doesn't float
+          for (const [sx, sz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+            const ox = sx ? 1 : -1, oz = sz ? 1 : -1;
+            const solid = (cx, cz) => { const k = this.ch(cx, cz); return k === '#' || k === 'w' || k === 'n' || k === ','; };
+            if (solid(x + ox, z) || solid(x, z + oz) || solid(x + ox, z + oz)) continue;
+            const px = sx ? maxX - 0.15 : minX + 0.15, pz = sz ? maxZ - 0.15 : minZ + 0.15;
+            b.addBox('wall', { minX: px - 0.15, maxX: px + 0.15, minZ: pz - 0.15, maxZ: pz + 0.15, minY: 0, maxY: CEIL }, th.ledgeColor ?? th.wallColors[0], th.wallUv);
+            this.boxes.push({ minX: px - 0.15, maxX: px + 0.15, minZ: pz - 0.15, maxZ: pz + 0.15, minY: 0, maxY: CEIL, kind: 'pillar' });
+          }
+        }
 
         if (c === 'c' || c === 'C') {
           const low = c === 'c';
           const spec = low ? th.low : th.high;
           const inset = low ? 0.25 : 0.15;
           const h = low ? LOW_H : HIGH_H;
-          const bx = { minX: minX + inset, maxX: minX + CELL - inset, minZ: minZ + inset, maxZ: minZ + CELL - inset, minY: 0, maxY: h };
+          const bx = { minX: minX + inset, maxX: maxX - inset, minZ: minZ + inset, maxZ: maxZ - inset, minY: 0, maxY: h };
           b.addBox(low ? 'low' : 'high', bx, spec.colors[Math.floor(rng() * spec.colors.length)], 1 / (CELL - inset * 2), 0.25);
           this.boxes.push({ ...bx, kind: 'cover' });
+          th.coverDetail?.(b, bx, low, rng);
           if (spec.glow) {
-            b.add('glow', Geo.box, mat((bx.minX + bx.maxX) / 2, h + 0.03, (bx.minZ + bx.maxZ) / 2, 0, CELL - inset * 2 + 0.02, 0.06, CELL - inset * 2 + 0.02), spec.glow);
+            // glowing trim along the top edges
+            const w = CELL - inset * 2, mx = (bx.minX + bx.maxX) / 2, mz = (bx.minZ + bx.maxZ) / 2;
+            b.add('glow', Geo.box, mat(mx, h - 0.05, bx.minZ - 0.01, 0, w + 0.02, 0.08, 0.04), spec.glow);
+            b.add('glow', Geo.box, mat(mx, h - 0.05, bx.maxZ + 0.01, 0, w + 0.02, 0.08, 0.04), spec.glow);
+            b.add('glow', Geo.box, mat(bx.minX - 0.01, h - 0.05, mz, 0, 0.04, 0.08, w + 0.02), spec.glow);
+            b.add('glow', Geo.box, mat(bx.maxX + 0.01, h - 0.05, mz, 0, 0.04, 0.08, w + 0.02), spec.glow);
           }
-          if (spec.cap) {
-            b.add('plain', Geo.box, mat((bx.minX + bx.maxX) / 2, h + 0.08, (bx.minZ + bx.maxZ) / 2, 0, CELL - inset * 2 + 0.1, 0.16, CELL - inset * 2 + 0.1), 0xf6f9ff);
-          }
+          if (spec.cap) b.add('plain', Geo.box, mat((bx.minX + bx.maxX) / 2, h + 0.08, (bx.minZ + bx.maxZ) / 2, 0, CELL - inset * 2 + 0.1, 0.16, CELL - inset * 2 + 0.1), 0xf6f9ff);
         }
         if (c === 'o') {
           const cx = minX + CELL / 2, cz = minZ + CELL / 2, h = 5.5;
@@ -167,71 +357,68 @@ export class GameMap {
         }
       }
     }
+    this.blocks = { rects, heightAt: (cx, cz) => heightGrid[cz * W + cx] || 6 };
 
     // --- wall faces that look onto walkable ground (for decorations)
     const faces = [];
-    for (let z = 0; z < this.H; z++) {
-      for (let x = 0; x < this.W; x++) {
+    for (let z = 0; z < H; z++) {
+      for (let x = 0; x < W; x++) {
         if (this.ch(x, z) !== '#') continue;
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const n = this.ch(x + dx, z + dz);
-          if (n === '#' || n === '~' || n === 'C') continue;
-          if (x + dx < 0 || z + dz < 0 || x + dx >= this.W || z + dz >= this.H) continue;
+          const nx = x + dx, nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue;
+          const n = this.ch(nx, nz);
+          if (BLOCKING.has(n) || n === 'n' || n === ',' || STAIRS[n]) continue;
           const c = this.center(x, z);
-          faces.push({ x: c.x + dx * CELL / 2, z: c.z + dz * CELL / 2, nx: dx, nz: dz, cx: x, cz: z });
+          faces.push({ x: c.x + dx * CELL / 2, z: c.z + dz * CELL / 2, nx: dx, nz: dz, cx: x, cz: z, base: LEVEL[n] ?? 0, top: heightGrid[z * W + x] });
         }
       }
     }
 
     const cellCenter = (x, z) => this.center(x, z);
-    const ext = { cx: 0, cz: 0, rx: this.W * CELL / 2, rz: this.H * CELL / 2 };
-    const ctx = { b, rng, faces, floorCells, waterCells, cellCenter, blocks: this.blocks, scene, map: this, waterY: WATER_Y, ...ext };
+    const ext = { cx: 0, cz: 0, rx: W * CELL / 2, rz: H * CELL / 2 };
+    const ctx = { b, rng, faces, floorCells, waterCells, indoorCells, cellCenter, blocks: this.blocks, scene, map: this, waterY: WATER_Y, ...ext };
     th.decorate?.(ctx);
-    th.backdrop?.(ctx);
+    th.backdrop?.({ ...ctx, b: bb });
 
-    // clouds
     if (th.clouds) {
       for (let i = 0; i < 14; i++) {
         const a = rng() * Math.PI * 2, r = 120 + rng() * 200;
         for (let k = 0; k < 4; k++) {
-          b.add('cloud', Geo.sphere, mat(Math.cos(a) * r + (rng() - 0.5) * 30, 70 + rng() * 40, Math.sin(a) * r + (rng() - 0.5) * 15, 0, 18 + rng() * 14, 6 + rng() * 4, 12 + rng() * 8), 0xffffff);
+          bb.add('cloud', Geo.sphere, mat(Math.cos(a) * r + (rng() - 0.5) * 30, 70 + rng() * 40, Math.sin(a) * r + (rng() - 0.5) * 15, 0, 18 + rng() * 14, 6 + rng() * 4, 12 + rng() * 8), 0xffffff);
         }
       }
     }
+    bb.addBox('floor', { minX: -400, maxX: 400, minZ: -400, maxZ: 400, minY: -2.5, maxY: -0.02 }, th.floorColor, 1 / 6);
 
-    // ground plane outside the playable area so the backdrop sits on something
-    const groundCol = th.floorColor;
-    b.addBox('floor', { minX: -400, maxX: 400, minZ: -400, maxZ: 400, minY: -2.5, maxY: -0.02 }, groundCol, 1 / 6);
+    const shadows = !!this.opts.shadows;
+    for (const m of b.build(scene, mats)) { m.castShadow = shadows; m.receiveShadow = shadows; }
+    for (const m of bb.build(scene, mats)) { m.receiveShadow = shadows; }
 
-    b.build(scene, mats);
-
-    // water surface (animated)
     if (waterCells.length) {
       const tex = makeWaterTex();
       const wm = new THREE.MeshPhongMaterial({ color: 0x3f8aa0, map: tex, transparent: true, opacity: 0.88, shininess: 90, specular: 0xffffff });
-      const geo = new THREE.PlaneGeometry(this.W * CELL, this.H * CELL);
-      const water = new THREE.Mesh(geo, wm);
+      const water = new THREE.Mesh(new THREE.PlaneGeometry(W * CELL, H * CELL), wm);
       water.rotation.x = -Math.PI / 2;
       water.position.set(0, WATER_Y, 0);
-      tex.repeat.set(this.W / 2, this.H / 2);
+      water.receiveShadow = shadows;
+      tex.repeat.set(W / 2, H / 2);
       scene.add(water);
       this.updaters.push((dt) => { tex.offset.x += dt * 0.03; tex.offset.y += dt * 0.012; });
     }
 
-    // site letters glowing on the floor
     for (const k of ['A', 'B']) {
       const s = this.sites[k];
       const color = th.siteGlow?.[k] || '#ffffff';
       const m = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 4.5),
         new THREE.MeshBasicMaterial({ map: letterTexture(k, color), transparent: true, opacity: 0.85, depthWrite: false }));
       m.rotation.x = -Math.PI / 2;
-      const spot = s.coverCells.find(([x, z]) => this.ch(x, z) === k) || s.cells[0];
-      const p = this.center(spot[0], spot[1]);
-      m.position.set(p.x, 0.03, p.z);
+      const spot = s.cells.find(([x, z]) => this.ch(x, z) === k) || s.cells[0];
+      const p = this.groundCenter(spot[0], spot[1]);
+      m.position.set(p.x, p.y + 0.03, p.z);
       scene.add(m);
     }
 
-    // colored point lights (night / moody maps)
     for (const [color, where] of th.lights || []) {
       const l = new THREE.PointLight(color, 40, 26, 1.6);
       const p = where === 'mid' ? new THREE.Vector3(0, 0, 0) : this.sites[where].center.clone();
@@ -239,9 +426,7 @@ export class GameMap {
       scene.add(l);
     }
 
-    // buy-phase barriers around spawns
     this.barriers = this.buildBarriers(scene);
-
     const upd = addParticles(th.particles, scene, { minX: this.ox, maxX: -this.ox, minZ: this.oz, maxZ: -this.oz });
     if (upd) this.updaters.push(upd);
   }
@@ -293,7 +478,7 @@ export class GameMap {
       for (const [x, z] of this.spawns[k]) {
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const n = this.ch(x + dx, z + dz);
-          if (n === k || n === '#' || n === 'C') continue;
+          if (n === k || BLOCKING.has(n)) continue;
           const c = this.center(x, z);
           const m = new THREE.Mesh(plane, mats[k]);
           m.position.set(c.x + dx * CELL / 2, 1.6, c.z + dz * CELL / 2);
@@ -372,8 +557,7 @@ export class GameMap {
         for (let dx = -1; dx <= 1; dx++) {
           if (!dx && !dz) continue;
           const nx = cx + dx, nz = cz + dz;
-          if (!this.walkable(nx, nz)) continue;
-          if (dx && dz && (!this.walkable(cx + dx, cz) || !this.walkable(cx, cz + dz))) continue;
+          if (!this.edgeOK(cx, cz, nx, nz)) continue;
           const ni = nz * W + nx;
           const ng = gScore[cur] + (dx && dz ? Math.SQRT2 : 1) + (penalty ? penalty[ni] : 0);
           if (ng < gScore[ni]) {
@@ -398,6 +582,8 @@ export class GameMap {
       const s = this.sites[k];
       const goal = s.cells[Math.floor(s.cells.length / 2)];
       const penalty = new Float32Array(this.W * this.H);
+      // attackers shouldn't plan routes through the defenders' spawn
+      for (const [x, z] of this.spawns.D) penalty[z * this.W + x] = 60;
       const routes = [];
       for (let i = 0; i < 3; i++) {
         const path = this.findPath(tx, tz, goal[0], goal[1], penalty);
@@ -419,7 +605,7 @@ export class GameMap {
     for (let z = 0; z < this.H; z++) for (let x = 0; x < this.W; x++) {
       if (!this.walkable(x, z) || this.siteAt(this.center(x, z).x, this.center(x, z).z)) continue;
       const c = this.ch(x, z);
-      if (c === 'T' || c === 'D') continue;
+      if (c === 'T' || c === 'D' || STAIRS[c]) continue;
       cells.push([x, z, Math.hypot(x - this.W / 2, z - this.H * 0.45)]);
     }
     cells.sort((a, b) => a[2] - b[2]);
@@ -440,7 +626,10 @@ export class GameMap {
         const c = this.ch(x, z);
         if (c === '#') continue;
         let col;
-        if (c === 'C' || c === 'c' || c === 'o') col = '#5a6470';
+        if (c === 'w') col = '#20242a';
+        else if (c === 'C' || c === 'c' || c === 'o') col = '#5a6470';
+        else if (LEVEL[c] || STAIRS[c]) col = LEVEL[c] >= 2 ? '#6a7480' : '#525a64';
+        else if (c === ',' || c === 'n') col = '#4a4038';
         else if (c === '~') col = '#2c5a7a';
         else if (c === 'A') col = '#6b5640';
         else if (c === 'B') col = '#3f5068';
@@ -460,6 +649,16 @@ export class GameMap {
     }
     void th;
   }
+}
+
+// Expand a cell box sideways (across the wall's thickness) for trims.
+function grow(cell, alongX, d) {
+  return alongX ? { minZ: cell.minZ - d, maxZ: cell.maxZ + d, minX: cell.minX, maxX: cell.maxX }
+    : { minX: cell.minX - d, maxX: cell.maxX + d, minZ: cell.minZ, maxZ: cell.maxZ };
+}
+
+function shade(hex, k) {
+  return new THREE.Color(hex).multiplyScalar(k);
 }
 
 function tintColor(hex, rng, amt) {

@@ -76,6 +76,7 @@ export class Batcher {
   }
 
   build(parent, materials) {
+    const meshes = [];
     for (const [key, geos] of this.lists) {
       let count = 0;
       for (const g of geos) count += g.attributes.position.count;
@@ -99,8 +100,11 @@ export class Batcher {
       out.computeBoundingSphere();
       const mesh = new THREE.Mesh(out, materials[key] || materials.plain);
       parent.add(mesh);
+      mesh.userData.key = key;
+      meshes.push(mesh);
     }
     this.lists.clear();
+    return meshes;
   }
 }
 
@@ -282,6 +286,21 @@ const TEX = {
       noise(g, s, 20, rng);
     });
   },
+  wood(rng) {
+    return canvas(256, (g, s) => {
+      const n = 6, h = s / n;
+      for (let i = 0; i < n; i++) {
+        const v = 200 + rng() * 40;
+        g.fillStyle = `rgb(${v},${v * 0.86},${v * 0.7})`;
+        g.fillRect(0, i * h, s, h);
+        g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, i * h, s, 2);
+        g.fillRect(((i * 97) % 5) * s / 5, i * h, 2, h);
+        g.strokeStyle = 'rgba(90,50,20,0.18)'; g.lineWidth = 1;
+        for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(0, i * h + rng() * h); g.bezierCurveTo(s / 3, i * h + rng() * h, s * 0.6, i * h + rng() * h, s, i * h + rng() * h); g.stroke(); }
+      }
+      noise(g, s, 14, rng);
+    });
+  },
   crate(rng) {
     return canvas(128, (g, s) => {
       g.fillStyle = '#dcdcdc'; g.fillRect(0, 0, s, s);
@@ -394,6 +413,7 @@ const P = {
     b.add('plain', G.cyl, mat(x, h / 2, z, 0, 0.14, h, 0.14), poleColor);
     b.add('plain', G.box, mat(x - Math.sin(ry) * 0.45, h, z - Math.cos(ry) * 0.45, ry, 0.12, 0.12, 1.0), poleColor);
     b.add('glow', G.box, mat(x - Math.sin(ry) * 0.9, h - 0.12, z - Math.cos(ry) * 0.9, ry, 0.35, 0.12, 0.5), glowColor);
+    b.add('beam', G.cone, mat(x - Math.sin(ry) * 0.9, h / 2 - 0.1, z - Math.cos(ry) * 0.9, 0, 2.6, h - 0.2, 2.6), glowColor);
   },
   palm(b, x, z, h, rng) {
     const lean = (rng() - 0.5) * 0.25, dir = rng() * Math.PI * 2;
@@ -471,6 +491,145 @@ const P = {
   },
 };
 
+function posterAtlas(rng) {
+  // 4 x 2 posters / banners in one texture
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 256;
+  const g = cv.getContext('2d');
+  const sets = [
+    ['#ff3fd2', '#1a0f2e', 'NEON'], ['#3ff3ff', '#0f1a2e', 'VOLT'], ['#ffd23f', '#2e1a0f', 'SALE'], ['#ff6b4f', '#1a1a1a', 'LIVE'],
+    ['#9a5bff', '#f2f2f2', 'RAVE'], ['#4fff9a', '#102010', 'GO!'], ['#ff4f7a', '#fff3d6', 'OPEN'], ['#4f9aff', '#ffe9c4', 'FIZZ'],
+  ];
+  sets.forEach(([fg, bg, txt], i) => {
+    const x = (i % 4) * 128, y = Math.floor(i / 4) * 128;
+    g.fillStyle = bg; g.fillRect(x + 4, y + 4, 120, 120);
+    g.fillStyle = fg;
+    g.beginPath(); g.arc(x + 64, y + 50, 28 + rng() * 10, 0, 7); g.fill();
+    g.fillStyle = bg === '#f2f2f2' || bg.startsWith('#ff') ? '#222' : '#fff';
+    g.font = 'bold 30px sans-serif'; g.textAlign = 'center';
+    g.fillText(txt, x + 64, y + 112);
+    g.strokeStyle = fg; g.lineWidth = 4; g.strokeRect(x + 8, y + 8, 112, 112);
+  });
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const posterGeo = [];
+for (let i = 0; i < 8; i++) {
+  const g = new THREE.PlaneGeometry(1, 1);
+  const u0 = (i % 4) / 4, v0 = 1 - (Math.floor(i / 4) + 1) / 2;
+  const uv = g.attributes.uv;
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) / 4, v0 + uv.getY(k) / 2);
+  posterGeo.push(g);
+}
+
+// Walks from a wall face across open cells until the opposite wall. Returns length in cells (or 0).
+function spanAcross(map, f, maxCells = 5) {
+  for (let k = 1; k <= maxCells + 1; k++) {
+    const c = map.ch(f.cx + f.nx * k, f.cz + f.nz * k);
+    if (c === '#') return k - 1;
+    if (c === 'w' || c === 'n' || c === ',' || c === '2') return 0;
+  }
+  return 0;
+}
+
+const Q = {
+  poster(b, f, y, i, w = 1.1, h = 1.4) {
+    b.add('poster', posterGeo[i % 8], mat(f.x + f.nx * 0.04, y, f.z + f.nz * 0.04, Math.atan2(f.nx, f.nz), w, h, 1));
+  },
+  // A sagging line strung between two walls, with things hanging off it.
+  string(b, map, f, y, cells, hang, rng) {
+    const len = cells * 3, n = Math.max(4, cells * 4);
+    const ry = Math.atan2(f.nx, f.nz);
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n, tm = (t0 + t1) / 2;
+      const sag = Math.sin(tm * Math.PI) * 0.6;
+      const x = f.x + f.nx * len * tm, z = f.z + f.nz * len * tm;
+      b.add('plain', G.box, mat(x, y - sag, z, ry, 0.03, 0.03, len / n + 0.02), 0x222222);
+      if (i % 2 === 0) hang(x, y - sag, z, ry, i);
+    }
+  },
+  ac(b, f, y) {
+    const ry = Math.atan2(f.nx, f.nz);
+    b.add('plain', G.box, mat(f.x + f.nx * 0.35, y, f.z + f.nz * 0.35, ry, 1.0, 0.7, 0.7), 0xc8ccd2);
+    b.add('plain', G.cyl, mat(f.x + f.nx * 0.71, y, f.z + f.nz * 0.71, ry, 0.5, 0.02, 0.5, Math.PI / 2), 0x55595f);
+  },
+  vending(b, x, z, ry, color, glowColor) {
+    b.add('plain', G.box, mat(x, 1.0, z, ry, 1.0, 2.0, 0.8), color);
+    b.add('glow', G.box, mat(x - Math.sin(ry) * 0.41, 1.25, z - Math.cos(ry) * 0.41, ry, 0.7, 1.1, 0.02), glowColor);
+    b.add('plain', G.box, mat(x - Math.sin(ry) * 0.41, 0.35, z - Math.cos(ry) * 0.41, ry, 0.6, 0.18, 0.03), 0x111111);
+  },
+  dumpster(b, x, z, ry, color) {
+    b.add('plain', G.box, mat(x, 0.6, z, ry, 1.9, 1.2, 1.1), color);
+    b.add('plain', G.box, mat(x, 1.25, z, ry, 2.0, 0.1, 1.2, -0.12), 0x2a2a2a);
+  },
+  bags(b, x, z, rng) {
+    for (let i = 0; i < 3; i++) b.add('plain', G.sphere, mat(x + (rng() - 0.5) * 0.8, 0.25, z + (rng() - 0.5) * 0.8, rng() * 3, 0.55, 0.5, 0.5), 0x1d1f24);
+  },
+  crates(b, x, z, ry, rng) {
+    b.add('low', G.box, mat(x, 0.4, z, ry, 0.8, 0.8, 0.8), 0xb08860);
+    if (rng() < 0.7) b.add('low', G.box, mat(x + 0.85 * Math.cos(ry), 0.35, z - 0.85 * Math.sin(ry), ry + 0.2, 0.7, 0.7, 0.7), 0xa07850);
+    if (rng() < 0.5) b.add('low', G.box, mat(x + 0.1, 1.08, z, ry + 0.4, 0.6, 0.6, 0.6), 0xc09870);
+  },
+  bench(b, x, z, ry, color) {
+    b.add('plain', G.box, mat(x, 0.45, z, ry, 1.6, 0.08, 0.45), color);
+    b.add('plain', G.box, mat(x + Math.sin(ry) * 0.22, 0.75, z + Math.cos(ry) * 0.22, ry, 1.6, 0.4, 0.06), color);
+    b.add('plain', G.box, mat(x, 0.22, z, ry, 1.4, 0.44, 0.06), 0x333333);
+  },
+  planter(b, x, z, s, potColor, leaf) {
+    b.add('plain', G.box, mat(x, 0.3 * s, z, 0, 0.8 * s, 0.6 * s, 0.8 * s), potColor);
+    b.add('plain', G.sphere, mat(x, 0.85 * s, z, 0, 1.0 * s, 0.9 * s, 1.0 * s), leaf);
+  },
+  stall(b, x, z, ry, c1, c2, rng) {
+    const fx = -Math.sin(ry), fz = -Math.cos(ry);
+    b.add('plain', G.box, mat(x, 0.9, z, ry, 2.2, 0.1, 1.0), 0x8a5a32);
+    b.add('plain', G.box, mat(x, 0.45, z, ry, 2.1, 0.9, 0.9), 0x6a4426);
+    for (let i = 0; i < 4; i++) b.add('plain', G.sphere, mat(x + (rng() - 0.5) * 1.6 * Math.cos(ry), 1.05, z - (rng() - 0.5) * 1.6 * Math.sin(ry), 0, 0.3, 0.2, 0.3), [0xff6b3d, 0xffd23f, 0x6bd23f, 0xd23f6b][i]);
+    for (const s of [-1, 1]) b.add('plain', G.cyl, mat(x + s * 1.05 * Math.cos(ry) + fx * 0.45, 1.25, z - s * 1.05 * Math.sin(ry) + fz * 0.45, 0, 0.06, 2.5, 0.06), 0x5a3a20);
+    for (let i = 0; i < 4; i++) {
+      const o = (i - 1.5) * 0.56;
+      b.add('plain', G.box, mat(x + o * Math.cos(ry) + fx * 0.25, 2.45, z - o * Math.sin(ry) + fz * 0.25, ry, 0.56, 0.05, 1.5, -0.25), i % 2 ? c1 : c2);
+    }
+  },
+  rug(b, x, y, z, ry, c1, c2) {
+    b.add('plain', G.box, mat(x, y + 0.02, z, ry, 2.2, 0.03, 1.5), c1);
+    b.add('plain', G.box, mat(x, y + 0.035, z, ry, 1.6, 0.03, 0.9), c2);
+  },
+  sandbags(b, x, z, ry) {
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 3; i++) {
+      const o = (i - 1 + (r ? 0.5 : 0)) * 0.6;
+      if (r && i === 2) continue;
+      b.add('plain', G.sphere, mat(x + o * Math.cos(ry), 0.18 + r * 0.3, z - o * Math.sin(ry), ry, 0.62, 0.32, 0.4), 0xa89a78);
+    }
+  },
+  flood(b, x, z, h, ry) {
+    b.add('plain', G.cyl6, mat(x, h / 2, z, 0, 0.16, h, 0.16), 0x5a606a);
+    b.add('plain', G.box, mat(x, h, z, ry, 1.0, 0.5, 0.35), 0x3a3f48);
+    b.add('glow', G.box, mat(x - Math.sin(ry) * 0.18, h - 0.02, z - Math.cos(ry) * 0.18, ry, 0.85, 0.36, 0.02), 0xfff2d0);
+    b.add('beam', G.cone, mat(x - Math.sin(ry) * 2.2, h / 2, z - Math.cos(ry) * 2.2, ry, 3.5, h, 3.5, 0.45), 0xfff2c0);
+  },
+  table(b, x, y, z, ry) {
+    b.add('plain', G.box, mat(x, y + 0.75, z, ry, 1.4, 0.08, 0.8), 0x7a5232);
+    for (const [a, c] of [[-0.6, -0.32], [0.6, -0.32], [-0.6, 0.32], [0.6, 0.32]]) {
+      b.add('plain', G.box, mat(x + a * Math.cos(ry) + c * Math.sin(ry), y + 0.37, z - a * Math.sin(ry) + c * Math.cos(ry), ry, 0.07, 0.74, 0.07), 0x5a3a20);
+    }
+    b.add('plain', G.cyl, mat(x, y + 0.88, z, 0, 0.16, 0.18, 0.16), 0xe8e2d6);
+  },
+  shelf(b, f, y, rng) {
+    const ry = Math.atan2(f.nx, f.nz);
+    const x = f.x + f.nx * 0.3, z = f.z + f.nz * 0.3;
+    b.add('plain', G.box, mat(x, y + 1.0, z, ry, 2.2, 2.0, 0.5), 0x6a4a2e);
+    for (let k = 0; k < 3; k++) for (let i = 0; i < 5; i++) {
+      b.add('plain', G.box, mat(x + (i - 2) * 0.4 * Math.cos(ry) + f.nx * 0.05, y + 0.45 + k * 0.6, z - (i - 2) * 0.4 * Math.sin(ry) + f.nz * 0.05, ry, 0.25, 0.3 + rng() * 0.15, 0.3), [0xd8503a, 0x3a8ad8, 0xe8c24a, 0x5ab85a, 0xe8e2d6][Math.floor(rng() * 5)]);
+    }
+  },
+  cable(b, f, y0, y1) {
+    const ry = Math.atan2(f.nx, f.nz);
+    b.add('plain', G.box, mat(f.x + f.nx * 0.08, (y0 + y1) / 2, f.z + f.nz * 0.08, ry, 0.05, y1 - y0, 0.05), 0x1a1a1a);
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Themes
 // ---------------------------------------------------------------------------
@@ -486,28 +645,50 @@ export const THEMES = {
     pillar: 0x3a3f52, siteGlow: { A: '#ff7ad9', B: '#7ff6ff' },
     lights: [[0xff3fd2, 'A'], [0x3ff3ff, 'B'], [0xffb347, 'mid']],
     particles: 'rain', exposure: 1.0,
+    shinyFloor: true, trimColor: 0x2a2a3a, ledgeColor: 0x4a4a66, railColor: 0x22222e, ceilColor: 0x3a3a4e, indoorColor: 0x8a6a5a, indoorLight: 0xff9ae0,
+    coverDetail(b, bx, low, rng) {
+      const cx = (bx.minX + bx.maxX) / 2, cz = (bx.minZ + bx.maxZ) / 2;
+      if (!low) {
+        // food kiosk: glowing menu board + awning
+        b.add('glow', G.box, mat(cx, 1.7, bx.minZ - 0.02, 0, 2.2, 0.5, 0.03), rng() < 0.5 ? 0xff7ad9 : 0x7ff6ff);
+        b.add('plain', G.box, mat(cx, 2.5, cz, 0, 3.0, 0.1, 3.0), 0x22222e);
+      }
+    },
     decorate(ctx) {
-      const { b, rng, faces, scene } = ctx;
-      // neon signs on walls
-      const words = [['NOODLE', '#ff4fd8'], ['24/7', '#4ff3ff'], ['ARCADE', '#ffd23f'], ['HOTEL', '#9a7bff'], ['RAMEN', '#ff6b4f'], ['CYBER', '#4fff9a'], ['BAR', '#ff4f7a'], ['TAXI', '#ffe14f']];
-      const picks = faces.filter((f) => rng() < 0.5).sort(() => rng() - 0.5).slice(0, 9);
+      const { b, rng, faces, scene, map, indoorCells, cellCenter } = ctx;
+      const words = [['NOODLE', '#ff4fd8'], ['24/7', '#4ff3ff'], ['ARCADE', '#ffd23f'], ['HOTEL', '#9a7bff'], ['RAMEN', '#ff6b4f'], ['CYBER', '#4fff9a'], ['BAR', '#ff4f7a'], ['TAXI', '#ffe14f'], ['KARAOKE', '#4fd8ff'], ['PIZZA', '#ff9a3f']];
+      const picks = faces.filter(() => rng() < 0.55).sort(() => rng() - 0.5).slice(0, 14);
       picks.forEach((f, i) => {
         const [text, color] = words[i % words.length];
         const m = new THREE.Mesh(G.plane, new THREE.MeshBasicMaterial({ map: signTexture(text, color), transparent: true }));
-        m.scale.set(3.2, 1.0, 1);
-        m.position.set(f.x + f.nx * 0.06, 4.2 + rng() * 1.6, f.z + f.nz * 0.06);
-        m.rotation.y = Math.atan2(f.nx, f.nz);
+        const vertical = i % 3 === 0;
+        m.scale.set(vertical ? 1.2 : 3.2, vertical ? 3.4 : 1.0, 1);
+        m.position.set(f.x + f.nx * (vertical ? 0.5 : 0.06), f.base + 4.4 + rng() * 1.6, f.z + f.nz * (vertical ? 0.5 : 0.06));
+        m.rotation.y = Math.atan2(f.nx, f.nz) + (vertical ? Math.PI / 2 : 0);
+        if (vertical) m.material.side = THREE.DoubleSide;
         scene.add(m);
       });
-      // street lamps
       for (const f of faces) {
-        if (rng() > 0.1) continue;
-        P.lamp(b, f.x + f.nx * 0.3, f.z + f.nz * 0.3, 4.2, 0x22252e, rng() < 0.5 ? 0xff7ad9 : 0x7ff6ff, Math.atan2(-f.nx, -f.nz) + Math.PI);
+        const y = f.base, r = rng(), ry = Math.atan2(f.nx, f.nz);
+        const px = f.x + f.nx * 0.55, pz = f.z + f.nz * 0.55;
+        if (r < 0.08) P.lamp(b, f.x + f.nx * 0.3, f.z + f.nz * 0.3, 4.2, 0x22252e, rng() < 0.5 ? 0xff7ad9 : 0x7ff6ff, ry + Math.PI);
+        else if (r < 0.15 && !y) Q.vending(b, px, pz, ry + Math.PI, [0xc23a5a, 0x2a5ac2, 0x2a2a3a][Math.floor(rng() * 3)], rng() < 0.5 ? 0xbff6ff : 0xffd6f0);
+        else if (r < 0.2 && !y) Q.dumpster(b, f.x + f.nx * 0.7, f.z + f.nz * 0.7, ry, 0x2f5a3a);
+        else if (r < 0.26 && !y) Q.bags(b, px, pz, rng);
+        if (rng() < 0.45) Q.poster(b, f, y + 1.6 + rng() * 0.5, Math.floor(rng() * 8));
+        if (rng() < 0.3) Q.ac(b, f, y + 3 + rng() * 3);
+        if (rng() < 0.25) Q.cable(b, f, 0.2, f.top);
+        if (rng() < 0.35) b.add('glow', G.box, mat(f.x + f.nx * 0.03, y + 0.08, f.z + f.nz * 0.03, ry, 2.6, 0.06, 0.04), rng() < 0.5 ? 0xff3fd2 : 0x3ff3ff);
+        // strings of lanterns over the street
+        const span = spanAcross(map, f, 4);
+        if (span >= 2 && rng() < 0.22) {
+          const col = [0xff4fd8, 0x4ff3ff, 0xffd23f][Math.floor(rng() * 3)];
+          Q.string(b, map, f, Math.min(f.top - 0.5, 6.2), span, (x, yy, z) => b.add('glow', G.sphere, mat(x, yy - 0.25, z, 0, 0.3, 0.38, 0.3), col), rng);
+        }
       }
-      // floor lane markings / glowing strips along building bases
-      for (const f of faces) {
-        if (rng() > 0.35) continue;
-        b.add('glow', G.box, mat(f.x + f.nx * 0.03, 0.08, f.z + f.nz * 0.03, Math.atan2(f.nx, f.nz), 2.6, 0.06, 0.04), rng() < 0.5 ? 0xff3fd2 : 0x3ff3ff);
+      for (const c of indoorCells) {
+        const p = cellCenter(c.x, c.z);
+        if (rng() < 0.4) Q.table(b, p.x + (rng() - 0.5), 0, p.z + (rng() - 0.5), rng() * 3);
       }
     },
     backdrop(ctx) {
@@ -532,25 +713,39 @@ export const THEMES = {
     low: { tex: 'stone', colors: [0xd2a676, 0xc89a6a] }, high: { tex: 'crate', colors: [0x9a7048, 0x8a6440] },
     pillar: 0xe6c495, siteGlow: { A: '#fff1c4', B: '#fff1c4' },
     lights: [], particles: 'dust',
+    trimColor: 0xd9b48a, ledgeColor: 0xe2b98a, railColor: 0x8a6440, ceilColor: 0xcfa070, indoorColor: 0xc89a6a, indoorLight: 0xffd8a0, railings: true,
+    coverDetail(b, bx, low, rng) {
+      const cx = (bx.minX + bx.maxX) / 2, cz = (bx.minZ + bx.maxZ) / 2;
+      if (!low) b.add('plain', G.box, mat(cx, bx.maxY + 0.05, cz, 0, bx.maxX - bx.minX + 0.4, 0.1, bx.maxZ - bx.minZ + 0.4), [0xc0392b, 0x2e86c1, 0xe5a823][Math.floor(rng() * 3)]);
+    },
     decorate(ctx) {
-      const { b, rng, faces, floorCells, cellCenter } = ctx;
+      const { b, rng, faces, floorCells, cellCenter, map, indoorCells } = ctx;
       for (const f of faces) {
-        const r = rng();
-        if (r < 0.05) P.pot(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, 0.9 + rng() * 0.4, rng() < 0.5 ? 0xb5653a : 0x8a4a2a);
-        else if (r < 0.1) {
-          // cloth awning sticking out of the wall
-          const ry = Math.atan2(f.nx, f.nz);
-          b.add('plain', G.box, mat(f.x + f.nx * 0.8, 3.0, f.z + f.nz * 0.8, ry, 2.4, 0.06, 1.7, 0.35), [0xc0392b, 0x2e86c1, 0xe5a823, 0x1e8449][Math.floor(rng() * 4)]);
-        } else if (r < 0.14) {
-          const ry = Math.atan2(f.nx, f.nz);
-          b.add('plain', G.box, mat(f.x + f.nx * 0.05, 4.0, f.z + f.nz * 0.05, ry, 1.1, 2.6, 0.04), [0x8e2a2a, 0x2a4a8e, 0xc9952a][Math.floor(rng() * 3)]);
+        const r = rng(), ry = Math.atan2(f.nx, f.nz), y = f.base;
+        const px = f.x + f.nx * 0.7, pz = f.z + f.nz * 0.7;
+        if (r < 0.07) P.pot(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, 0.9 + rng() * 0.4, rng() < 0.5 ? 0xb5653a : 0x8a4a2a);
+        else if (r < 0.12) b.add('plain', G.box, mat(f.x + f.nx * 0.8, y + 3.0, f.z + f.nz * 0.8, ry, 2.4, 0.06, 1.7, 0.35), [0xc0392b, 0x2e86c1, 0xe5a823, 0x1e8449][Math.floor(rng() * 4)]);
+        else if (r < 0.17) b.add('plain', G.box, mat(f.x + f.nx * 0.05, y + 4.0, f.z + f.nz * 0.05, ry, 1.1, 2.6, 0.04), [0x8e2a2a, 0x2a4a8e, 0xc9952a][Math.floor(rng() * 3)]);
+        else if (r < 0.22 && !y) Q.stall(b, f.x + f.nx * 0.9, f.z + f.nz * 0.9, ry + Math.PI, 0xe8d8b8, [0xc0392b, 0x2e86c1, 0x1e8449][Math.floor(rng() * 3)], rng);
+        else if (r < 0.26 && !y) Q.crates(b, px, pz, ry, rng);
+        // torches
+        if (rng() < 0.12) {
+          b.add('plain', G.box, mat(f.x + f.nx * 0.2, y + 2.6, f.z + f.nz * 0.2, ry, 0.12, 0.5, 0.12), 0x5a3a20);
+          b.add('glow', G.cone, mat(f.x + f.nx * 0.2, y + 3.0, f.z + f.nz * 0.2, 0, 0.25, 0.4, 0.25), 0xffa040);
+        }
+        // cloth canopies stretched between buildings
+        const span = spanAcross(map, f, 3);
+        if (span >= 1 && rng() < 0.18) {
+          const col = [0xc0392b, 0xe5a823, 0x2e86c1, 0xe8d8b8][Math.floor(rng() * 4)];
+          b.add('plain', G.box, mat(f.x + f.nx * span * 1.5, Math.min(f.top, 6) - 0.4, f.z + f.nz * span * 1.5, ry, 2.6, 0.05, span * 3), col);
         }
       }
       for (const c of floorCells) {
-        if (c.ch !== '.' || rng() > 0.03) continue;
         const p = cellCenter(c.x, c.z);
-        P.palm(b, p.x + (rng() - 0.5), p.z + (rng() - 0.5), 6 + rng() * 3, rng);
+        if (c.ch === '.' && rng() < 0.035) P.palm(b, p.x + (rng() - 0.5), p.z + (rng() - 0.5), 6 + rng() * 3, rng);
+        else if ((c.ch === 'A' || c.ch === 'B' || c.ch === ',') && rng() < 0.12) Q.rug(b, p.x, map.cellHeight(c.x, c.z), p.z, rng() < 0.5 ? 0 : Math.PI / 2, 0x8e2a2a, 0xd9a43a);
       }
+      for (const c of indoorCells) if (rng() < 0.4) { const p = cellCenter(c.x, c.z); P.pot(b, p.x + 0.8, p.z - 0.8, 0.7, 0xb5653a); }
     },
     backdrop(ctx) {
       const { b, rng, cx, cz, rx, rz } = ctx;
@@ -577,15 +772,32 @@ export const THEMES = {
     low: { tex: 'stone', colors: [0xb8bcc2, 0xa8adb5], cap: true }, high: { tex: 'container', colors: [0xb83a2e, 0x2e6ab8, 0x2e8a5a, 0xd88a2e], cap: true },
     pillar: 0x8a95a3, siteGlow: { A: '#ff8a7a', B: '#7ab8ff' },
     lights: [[0xffb060, 'A'], [0xffb060, 'B']], particles: 'snow',
+    trimColor: 0x4a5058, ledgeColor: 0x8a95a3, railColor: 0xf2c12e, ceilColor: 0x6a7480, indoorColor: 0x7a7f88, indoorLight: 0xe8f4ff,
+    coverDetail(b, bx, low, rng) {
+      const cx = (bx.minX + bx.maxX) / 2, cz = (bx.minZ + bx.maxZ) / 2;
+      if (!low) {
+        // container doors + lock bars
+        for (const s of [-0.3, 0.3]) b.add('plain', G.box, mat(cx + s, 1.2, bx.maxZ + 0.02, 0, 0.05, 2.2, 0.04), 0x2a2a2a);
+      }
+    },
     decorate(ctx) {
-      const { b, rng, faces } = ctx;
+      const { b, rng, faces, indoorCells, cellCenter } = ctx;
       for (const f of faces) {
-        const r = rng();
+        const r = rng(), ry = Math.atan2(f.nx, f.nz), y = f.base;
+        const px = f.x + f.nx * 0.6, pz = f.z + f.nz * 0.6;
         if (r < 0.08) P.snowPile(b, f.x + f.nx * 0.5, f.z + f.nz * 0.5, 0.6 + rng() * 0.6);
-        else if (r < 0.12) P.barrel(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, rng() < 0.5 ? 0xb8402e : 0x2e5ab8);
-        else if (r < 0.15) P.lamp(b, f.x + f.nx * 0.3, f.z + f.nz * 0.3, 4.5, 0x3a3f48, 0xffc070, Math.atan2(-f.nx, -f.nz) + Math.PI);
-        // hazard stripes along the wall base
-        if (rng() < 0.25) b.add('plain', G.box, mat(f.x + f.nx * 0.03, 0.4, f.z + f.nz * 0.03, Math.atan2(f.nx, f.nz), 2.8, 0.25, 0.04), 0xf2c12e);
+        else if (r < 0.13 && !y) P.barrel(b, px, pz, rng() < 0.5 ? 0xb8402e : 0x2e5ab8);
+        else if (r < 0.18 && !y) Q.crates(b, px, pz, ry, rng);
+        else if (r < 0.22 && !y) Q.sandbags(b, f.x + f.nx * 0.8, f.z + f.nz * 0.8, ry);
+        else if (r < 0.26) Q.flood(b, f.x + f.nx * 0.4, f.z + f.nz * 0.4, 5, ry + Math.PI);
+        if (rng() < 0.3) b.add('plain', G.box, mat(f.x + f.nx * 0.03, y + 0.4, f.z + f.nz * 0.03, ry, 2.8, 0.25, 0.04), 0xf2c12e);
+        if (rng() < 0.15) b.add('plain', G.box, mat(f.x + f.nx * 0.04, y + 2.2, f.z + f.nz * 0.04, ry, 1.6, 1.0, 0.03), 0xe8e8e8);
+        if (rng() < 0.2) Q.ac(b, f, y + 2.5 + rng() * 2);
+        if (rng() < 0.15) for (let k = 0; k < 4; k++) b.add('plain', G.cone, mat(f.x + f.nx * 0.1 + (k - 1.5) * 0.5 * Math.cos(ry), f.top - 0.35, f.z + f.nz * 0.1 - (k - 1.5) * 0.5 * Math.sin(ry), 0, 0.12, 0.6, 0.12, Math.PI), 0xdff0ff);
+      }
+      for (const c of indoorCells) {
+        const p = cellCenter(c.x, c.z);
+        if (rng() < 0.5) Q.table(b, p.x, 0, p.z, rng() * 3);
       }
     },
     backdrop(ctx) {
@@ -617,25 +829,42 @@ export const THEMES = {
     low: { tex: 'crate', colors: [0x6a7a5a, 0x7a6a4a] }, high: { tex: 'container', colors: [0x5a6a4a, 0x4a5a5a] },
     pillar: 0x8a948c, siteGlow: { A: '#ffe08a', B: '#8affea' },
     lights: [[0x9affb0, 'A'], [0x9affb0, 'B']], particles: 'fireflies',
+    trimColor: 0x6a7a6a, ledgeColor: 0x7f8a82, railColor: 0x4a3a2a, ceilColor: 0x6a706a, indoorColor: 0x8a8a7a, indoorLight: 0xd8ffd0,
     decorate(ctx) {
-      const { b, rng, faces, blocks, floorCells, cellCenter } = ctx;
+      const { b, rng, faces, blocks, floorCells, cellCenter, indoorCells, map } = ctx;
       for (const f of faces) {
-        const top = blocks.heightAt(f.cx, f.cz);
-        const n = Math.floor(rng() * 3);
+        const top = f.top, ry = Math.atan2(f.nx, f.nz), y = f.base;
+        const n = Math.floor(rng() * 4);
         for (let i = 0; i < n; i++) {
           const off = (rng() - 0.5) * 2.6;
-          P.vine(b, f.x + f.nz * off, top, f.z - f.nx * off, f.nx, f.nz, 1.5 + rng() * (top - 1.5), rng);
+          P.vine(b, f.x + f.nz * off, top, f.z - f.nx * off, f.nx, f.nz, 1.5 + rng() * (top - 1.5 - y), rng);
         }
-        if (rng() < 0.12) P.fern(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, rng);
-        if (rng() < 0.06) {
-          // rusty pipe running along the wall
-          b.add('plain', G.cyl, mat(f.x + f.nx * 0.25, 2.5 + rng() * 2, f.z + f.nz * 0.25, Math.atan2(f.nx, f.nz), 0.25, 3, 0.25, 0, Math.PI / 2), 0x7a5a3a);
+        const r = rng();
+        if (r < 0.14) P.fern(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, rng);
+        else if (r < 0.2 && !y) Q.crates(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, ry, rng);
+        else if (r < 0.24 && !y) P.barrel(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, 0x5a6a3a);
+        if (rng() < 0.08) b.add('plain', G.cyl, mat(f.x + f.nx * 0.25, y + 2.5 + rng() * 2, f.z + f.nz * 0.25, ry, 0.25, 3, 0.25, 0, Math.PI / 2), 0x7a5a3a);
+        if (rng() < 0.2) b.add('plain', G.box, mat(f.x + f.nx * 0.03, y + 0.5, f.z + f.nz * 0.03, ry, 2.8, 0.18, 0.04), 0xd8b02e);
+        if (rng() < 0.12) {
+          // caged wall lamp with a light cone
+          b.add('glow', G.box, mat(f.x + f.nx * 0.2, y + 3.2, f.z + f.nz * 0.2, ry, 0.4, 0.25, 0.25), 0xfff2c0);
+          b.add('beam', G.cone, mat(f.x + f.nx * 1.2, y + 1.6, f.z + f.nz * 1.2, ry, 2.6, 3.2, 2.6), 0xfff2c0);
         }
-        if (rng() < 0.18) b.add('plain', G.box, mat(f.x + f.nx * 0.03, 0.5, f.z + f.nz * 0.03, Math.atan2(f.nx, f.nz), 2.8, 0.18, 0.04), 0xd8b02e);
+        const span = spanAcross(map, f, 3);
+        if (span >= 1 && rng() < 0.2) {
+          Q.string(b, map, f, Math.min(top, 6) - 0.2, span, (x, yy, z, rr) => b.add('plain', G.box, mat(x, yy - 0.7, z, rr, 0.12, 1.4, 0.04), 0x3d7d32), rng);
+        }
       }
       for (const c of floorCells) {
-        if (rng() < 0.08) P.fern(b, cellCenter(c.x, c.z).x + (rng() - 0.5) * 2, cellCenter(c.x, c.z).z + (rng() - 0.5) * 2, rng);
+        const p = cellCenter(c.x, c.z);
+        if (rng() < 0.08) P.fern(b, p.x + (rng() - 0.5) * 2, p.z + (rng() - 0.5) * 2, rng);
+        if (rng() < 0.04) b.add('plain', G.box, mat(p.x, map.cellHeight(c.x, c.z) + 0.05, p.z, rng() * 3, 1.6, 0.1, 0.3), 0x6a5a40);
       }
+      for (const c of indoorCells) {
+        const p = cellCenter(c.x, c.z);
+        if (rng() < 0.4) Q.table(b, p.x, 0, p.z, rng() * 3);
+      }
+      void blocks;
     },
     backdrop(ctx) {
       const { b, rng, cx, cz, rx, rz } = ctx;
@@ -655,39 +884,57 @@ export const THEMES = {
     low: { tex: 'crate', colors: [0x9a7048, 0x8a6440] }, high: { tex: 'stone', colors: [0xd8cdbd, 0xc8bca8] },
     pillar: 0xe6dccc, siteGlow: { A: '#ffd27a', B: '#7ac8ff' },
     lights: [], particles: null, water: true,
+    trimColor: 0xf2e8d8, ledgeColor: 0xe6dccc, railColor: 0xe6dccc, ceilColor: 0xe8dcc8, indoorColor: 0xa8704a, indoorLight: 0xffe0b0,
+    coverDetail(b, bx, low, rng) {
+      const cx = (bx.minX + bx.maxX) / 2, cz = (bx.minZ + bx.maxZ) / 2;
+      if (!low) {
+        // market stall roof
+        for (let i = 0; i < 4; i++) b.add('plain', G.box, mat(cx - 1.05 + i * 0.7, bx.maxY + 0.35, cz, 0, 0.7, 0.06, 3.1, 0.2), i % 2 ? 0xffffff : 0xc0392b);
+      }
+    },
     decorate(ctx) {
-      const { b, rng, faces, waterCells, cellCenter, waterY, map } = ctx;
+      const { b, rng, faces, waterCells, cellCenter, waterY, map, indoorCells } = ctx;
       for (const f of faces) {
-        const r = rng();
-        const ry = Math.atan2(f.nx, f.nz);
+        const r = rng(), ry = Math.atan2(f.nx, f.nz), y = f.base;
         if (r < 0.1) {
-          // wall lantern
-          b.add('plain', G.box, mat(f.x + f.nx * 0.25, 3.2, f.z + f.nz * 0.25, ry, 0.08, 0.08, 0.5), 0x222222);
-          b.add('glow', G.box, mat(f.x + f.nx * 0.45, 3.0, f.z + f.nz * 0.45, ry, 0.25, 0.4, 0.25), 0xffd27a);
+          b.add('plain', G.box, mat(f.x + f.nx * 0.25, y + 3.2, f.z + f.nz * 0.25, ry, 0.08, 0.08, 0.5), 0x222222);
+          b.add('glow', G.box, mat(f.x + f.nx * 0.45, y + 3.0, f.z + f.nz * 0.45, ry, 0.25, 0.4, 0.25), 0xffd27a);
         } else if (r < 0.17) {
-          b.add('plain', G.box, mat(f.x + f.nx * 0.7, 3.2, f.z + f.nz * 0.7, ry, 2.2, 0.06, 1.4, 0.3), [0xb83a2e, 0x2e6a4a, 0x2e4a8a, 0xe8d8b8][Math.floor(rng() * 4)]);
-        } else if (r < 0.22) {
-          // flower boxes
-          b.add('plain', G.box, mat(f.x + f.nx * 0.2, 4.6, f.z + f.nz * 0.2, ry, 1.2, 0.3, 0.35), 0x7a4a2a);
-          b.add('plain', G.sphere, mat(f.x + f.nx * 0.25, 4.85, f.z + f.nz * 0.25, ry, 1.1, 0.35, 0.35), rng() < 0.5 ? 0xe84a6a : 0xf2d24a);
+          b.add('plain', G.box, mat(f.x + f.nx * 0.7, y + 3.2, f.z + f.nz * 0.7, ry, 2.2, 0.06, 1.4, 0.3), [0xb83a2e, 0x2e6a4a, 0x2e4a8a, 0xe8d8b8][Math.floor(rng() * 4)]);
+        } else if (r < 0.22 && !y) {
+          Q.bench(b, f.x + f.nx * 0.5, f.z + f.nz * 0.5, ry + Math.PI, 0x5a3a20);
+        } else if (r < 0.26 && !y) {
+          Q.planter(b, f.x + f.nx * 0.6, f.z + f.nz * 0.6, 1, 0xb5653a, 0x3f8a3a);
+        }
+        if (rng() < 0.3) {
+          b.add('plain', G.box, mat(f.x + f.nx * 0.2, y + 4.6, f.z + f.nz * 0.2, ry, 1.2, 0.3, 0.35), 0x7a4a2a);
+          b.add('plain', G.sphere, mat(f.x + f.nx * 0.25, y + 4.85, f.z + f.nz * 0.25, ry, 1.1, 0.35, 0.35), rng() < 0.5 ? 0xe84a6a : 0xf2d24a);
+        }
+        // laundry lines between houses
+        const span = spanAcross(map, f, 4);
+        if (span >= 1 && rng() < 0.25) {
+          const cols = [0xffffff, 0xe84a6a, 0x4a8ae8, 0xf2d24a, 0x6ac86a];
+          Q.string(b, map, f, Math.min(f.top - 0.8, 6.5), span, (x, yy, z, rr, i) => b.add('plain', G.box, mat(x, yy - 0.35, z, rr, 0.04, 0.6, 0.5), cols[i % cols.length]), rng);
         }
       }
-      // gondolas and mooring poles along the canals
       for (const c of waterCells) {
         const p = cellCenter(c.x, c.z);
         if (rng() < 0.12) P.gondola(b, p.x, waterY + 0.15, p.z, Math.PI / 2 + (rng() - 0.5) * 0.3);
         if (rng() < 0.15) P.mooring(b, p.x + (rng() - 0.5) * 2, waterY - 0.2, p.z + (rng() - 0.5) * 2, 3.2, 0xffffff, rng() < 0.5 ? 0xc0392b : 0x2e5ab8);
       }
-      // stone railings along bridges and quays
       for (const c of waterCells) {
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const ch = map.ch(c.x + dx, c.z + dz);
-          if (ch === '~' || ch === '#') continue;
+          if (ch === '~' || ch === '#' || ch === 'w') continue;
           const p = cellCenter(c.x, c.z);
           const ex = p.x + dx * 1.5, ez = p.z + dz * 1.5;
           b.add('plain', G.box, mat(ex + dx * 0.15, 0.45, ez + dz * 0.15, dx ? Math.PI / 2 : 0, 3, 0.15, 0.3), 0xe6dccc);
           for (let k = -1; k <= 1; k++) b.add('plain', G.box, mat(ex + dx * 0.15 + (dz ? k : 0), 0.2, ez + dz * 0.15 + (dx ? k : 0), 0, 0.18, 0.4, 0.18), 0xd8cdbd);
         }
+      }
+      for (const c of indoorCells) {
+        const p = cellCenter(c.x, c.z);
+        if (rng() < 0.45) Q.table(b, p.x, 0, p.z, rng() * 3);
       }
     },
     backdrop(ctx) {
@@ -711,10 +958,11 @@ export const THEMES = {
 // Theme application
 // ---------------------------------------------------------------------------
 
-export function buildTheme(themeId, map, scene, seed) {
+export function buildTheme(themeId, map, scene, seed, opts = {}) {
   const th = THEMES[themeId];
   const rng = seeded(seed);
   const b = new Batcher();
+  const bb = new Batcher();
 
   // sky & lights
   scene.add(skyDome(...th.sky));
@@ -725,15 +973,30 @@ export function buildTheme(themeId, map, scene, seed) {
   scene.background = new THREE.Color(th.fog[0]);
   scene.add(new THREE.HemisphereLight(th.hemi[0], th.hemi[1], th.hemi[2]));
   const sun = new THREE.DirectionalLight(th.sun[0], th.sun[1]);
-  sun.position.set(...th.sun[2]);
+  sun.position.set(...th.sun[2]).normalize().multiplyScalar(90);
   scene.add(sun);
+  scene.add(sun.target);
+  if (opts.shadows) {
+    sun.castShadow = true;
+    const ext = Math.max(map.W, map.H) * 3 * 0.62 + 6;
+    const cam = sun.shadow.camera;
+    cam.left = -ext; cam.right = ext; cam.top = ext; cam.bottom = -ext; cam.near = 10; cam.far = 220;
+    sun.shadow.mapSize.set(opts.shadows === 'high' ? 2048 : 1024, opts.shadows === 'high' ? 2048 : 1024);
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.04;
+  }
 
   // materials
   const wallTex = TEX[th.wall](rng);
   const wallMap = wallTex.map || wallTex;
   const mats = {
     wall: new THREE.MeshLambertMaterial({ map: wallMap, vertexColors: true }),
-    floor: new THREE.MeshLambertMaterial({ map: TEX[th.floor](rng), vertexColors: true }),
+    floor: th.shinyFloor
+      ? new THREE.MeshPhongMaterial({ map: TEX[th.floor](rng), vertexColors: true, shininess: 60, specular: 0x666688 })
+      : new THREE.MeshLambertMaterial({ map: TEX[th.floor](rng), vertexColors: true }),
+    indoor: new THREE.MeshLambertMaterial({ map: TEX.wood(rng), vertexColors: true }),
+    beam: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }),
+    poster: new THREE.MeshLambertMaterial({ map: posterAtlas(rng), vertexColors: true }),
     low: new THREE.MeshLambertMaterial({ map: TEX[th.low.tex](rng), vertexColors: true }),
     high: new THREE.MeshLambertMaterial({ map: TEX[th.high.tex](rng), vertexColors: true }),
     plain: new THREE.MeshLambertMaterial({ vertexColors: true }),
@@ -745,7 +1008,7 @@ export function buildTheme(themeId, map, scene, seed) {
     mats.wall.emissiveMap = wallTex.emissive;
     mats.wall.emissiveIntensity = 0.9;
   }
-  return { th, rng, b, mats };
+  return { th, rng, b, bb, mats };
 }
 
 export function addParticles(kind, scene, bounds) {
@@ -791,4 +1054,4 @@ export function addParticles(kind, scene, bounds) {
   };
 }
 
-export { P as Props, G as Geo };
+export { P as Props, G as Geo, Q as Props2 };
