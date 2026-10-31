@@ -1,7 +1,7 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031165834';
-import { makeWeaponState } from './weapons.js?v=20261031165834';
-import { applyMovement } from './entities.js?v=20261031165834';
-import { wrapAngle, yawTo } from './util.js?v=20261031165834';
+import * as THREE from '../lib/three.module.min.js?v=20261031170820';
+import { makeWeaponState } from './weapons.js?v=20261031170820';
+import { applyMovement } from './entities.js?v=20261031170820';
+import { wrapAngle, yawTo } from './util.js?v=20261031170820';
 
 // Multiplayer glue mixed into Game.
 //   Host: simulates the whole match (bots + every player), applies remote players' inputs,
@@ -140,6 +140,18 @@ export const NetMixin = {
       c.pitch += (c.net.pitch - c.pitch) * k;
     }
 
+    for (const c of this.combatants) {
+      if (c === p || !c.alive || !c.onGround) continue;
+      const sp = Math.hypot(c.vel.x, c.vel.z);
+      if (sp < 0.5) continue;
+      c.stepDist = (c.stepDist || 0) + sp * dt;
+      const loud = sp > 4 && !c.walking && c.crouch < 0.5;
+      const stride = c.crouch > 0.5 ? 1.25 : loud ? 2.2 : 1.6;
+      if (c.stepDist > stride) {
+        c.stepDist = 0;
+        if (loud || c.pos.distanceTo(p.pos) < 6) this.sound.footstep(c.pos, loud ? 'run' : c.crouch > 0.5 ? 'crouch' : 'walk', this.surfaceAt(c));
+      }
+    }
     this.abilities.updateVisual(dt);
     this.updateCoreVisual(dt);
 
@@ -296,10 +308,8 @@ export const NetMixin = {
         if (!v) return;
         this.hud.killfeed(k || null, v, ev.w, !!ev.h);
         if (k === p && v.team !== p.team) {
-          this.sound.kill();
           p.roundKills = (p.roundKills || 0) + 1;
-          this.hud.killBanner(v.name, p.roundKills);
-          this.sound.streak(p.roundKills);
+          this.onPlayerKill(v, p.roundKills);
         }
         if (v === p) {
           this.startDeathCam(k, ev.w);

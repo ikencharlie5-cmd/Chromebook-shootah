@@ -443,3 +443,17 @@ button.mini { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
 .buy-item.gun .row { flex-direction: column; align-items: flex-start; gap: 0; }
 .dt-cat { text-transform: uppercase; }
 .dt-after.own { color: var(--ally); }
+
+/* ---------- ACE ---------- */
+#aceScreen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; opacity: 0; overflow: hidden; }
+#aceScreen .ace-rays { position: absolute; width: 160vmax; height: 160vmax; left: 50%; top: 50%; margin: -80vmax 0 0 -80vmax;
+  background: repeating-conic-gradient(rgba(255,210,63,0.18) 0 6deg, transparent 6deg 18deg); border-radius: 50%;
+  -webkit-mask: radial-gradient(circle, #000 0, transparent 60%); mask: radial-gradient(circle, #000 0, transparent 60%); }
+#aceScreen .ace-word { position: relative; font-size: min(26vw, 260px); font-weight: 900; letter-spacing: 0.08em; line-height: 1;
+  background: linear-gradient(180deg, #fff6c8, #ffd23f 45%, #ff8a2a); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 30px rgba(255, 190, 40, 0.8)) drop-shadow(0 6px 0 #6a3a00); }
+#aceScreen .ace-sub { position: relative; font-size: 18px; font-weight: 800; letter-spacing: 6px; color: #fff; text-shadow: 0 2px 8px #000; }
+@keyframes aceFade { 0% { opacity: 0; background: rgba(255,230,140,0.6); } 6% { opacity: 1; background: rgba(255,230,140,0.25); } 30% { background: rgba(0,0,0,0); } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes aceSlam { 0% { transform: scale(3); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes aceSpin { from { transform: rotate(0); } to { transform: rotate(40deg); } }
+#aceScreen { padding-top: 90px; }

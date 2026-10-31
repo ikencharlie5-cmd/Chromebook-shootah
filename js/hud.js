@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031165834';
-import { fmtTime } from './util.js?v=20261031165834';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031165834';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031170820';
+import { fmtTime } from './util.js?v=20261031170820';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031170820';
 
 const $ = (id) => document.getElementById(id);
 
@@ -172,6 +172,7 @@ export class Hud {
 
     // timed fades
     this.hitT -= dt; this.dmgT -= dt; this.flashT -= dt; this.msgT -= dt;
+    this.updateAce(dt);
     this.el.hitmarker.style.opacity = Math.max(0, this.hitT / 0.25);
     this.el.dmgIndicator.style.opacity = Math.max(0, this.dmgT);
     this.el.redFlash.style.opacity = Math.max(0, this.flashT * 2);
@@ -209,6 +210,21 @@ export class Hud {
     n.animate([{ transform: 'translate(-50%,-50%) scale(1.4)', opacity: 1 }, { transform: 'translate(-50%,-160%) scale(1)', opacity: 1, offset: 0.3 }, { transform: 'translate(-50%,-260%) scale(0.9)', opacity: 0 }],
       { duration: 900, easing: 'ease-out' }).onfinish = () => n.remove();
     while (this.el.dmgNumbers.children.length > 14) this.el.dmgNumbers.firstChild.remove();
+  }
+
+  ace() { this.aceT = 3.2; }
+
+  // ACE overlay, animated from the game loop: flash, slam-in, spinning rays, fade out.
+  updateAce(dt) {
+    const el = this.aceEl || (this.aceEl = document.getElementById('aceScreen'));
+    if (!(this.aceT > 0)) { if (el.style.opacity !== '0') el.style.opacity = '0'; return; }
+    this.aceT -= dt;
+    const t = 3.2 - this.aceT;
+    el.style.opacity = String(Math.min(1, t / 0.15, Math.max(0, this.aceT) / 0.7));
+    el.style.background = `rgba(255,230,140,${Math.max(0, 0.45 - t * 1.2)})`;
+    const k = Math.min(1, t / 0.45), ease = 1 - Math.pow(1 - k, 3);
+    el.querySelector('.ace-word').style.transform = `scale(${3 - 2 * ease})`;
+    el.querySelector('.ace-rays').style.transform = `rotate(${t * 14}deg)`;
   }
 
   killBanner(name, streak) {

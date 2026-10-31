@@ -109,13 +109,44 @@ export class Sound {
     this.noise(this.out(sp), this.ctx.currentTime, 0.15, 'bandpass', 4500, 2, 0.25, 0.12);
   }
 
-  footstep(pos = null, quiet = false) {
+  // Footsteps by movement (run / walk / crouch) and surface.
+  // Your own steps play quietly in the centre; other players' steps are positional.
+  footstep(pos = null, mode = 'run', surface = 'stone', self = false) {
     if (!this.ctx) return;
-    const sp = this.spatial(pos, 28); if (!sp) return;
+    const range = mode === 'run' ? 28 : mode === 'walk' ? 7 : 4;
+    const sp = this.spatial(pos, range); if (!sp) return;
     const t = this.ctx.currentTime, o = this.out(sp);
-    const v = quiet ? 0.08 : 0.32;
-    this.noise(o, t, 0.08, 'bandpass', 900 + Math.random() * 400, 1.5, v, 0.07);
-    this.tone(o, t, 'sine', 90, 50, v * 0.6, 0.06);
+    const loud = { run: 0.34, walk: 0.11, crouch: 0.06 }[mode] * (self ? 0.45 : 1);
+    const soft = mode === 'run' ? 1 : mode === 'walk' ? 0.7 : 0.45;   // quieter steps are also duller
+    const r = Math.random();
+    switch (surface) {
+      case 'snow':     // crunch: a short burst of tiny clicks
+        this.noise(o, t, 0.12, 'bandpass', 2600 * soft, 0.8, loud * 0.8, 0.1);
+        for (let i = 0; i < 3; i++) this.noise(o, t + i * 0.018, 0.02, 'highpass', 4000, 1, loud * 0.35, 0.015);
+        break;
+      case 'sand':
+        this.noise(o, t, 0.14, 'lowpass', 1800 * soft, 0.7, loud * 0.7, 0.12);
+        break;
+      case 'wood':
+        this.tone(o, t, 'triangle', 180 + r * 30, 110, loud * 0.9, 0.08);
+        this.noise(o, t, 0.05, 'bandpass', 1200 * soft, 2, loud * 0.5, 0.04);
+        break;
+      case 'metal':
+        this.tone(o, t, 'square', 340 + r * 60, 300, loud * 0.25, 0.09);
+        this.noise(o, t, 0.06, 'bandpass', 3000 * soft, 3, loud * 0.5, 0.05);
+        break;
+      case 'wet':      // splashy asphalt
+        this.noise(o, t, 0.1, 'bandpass', 2200 * soft, 1.2, loud * 0.7, 0.09);
+        this.tone(o, t, 'sine', 95, 50, loud * 0.5, 0.06);
+        break;
+      case 'grass':
+        this.noise(o, t, 0.12, 'bandpass', 2400 * soft, 0.6, loud * 0.5, 0.1);
+        this.tone(o, t, 'sine', 80, 45, loud * 0.4, 0.06);
+        break;
+      default:         // stone / concrete
+        this.noise(o, t, 0.08, 'bandpass', (900 + r * 400) * soft, 1.5, loud, 0.07);
+        this.tone(o, t, 'sine', 90, 50, loud * 0.6, 0.06);
+    }
   }
 
   land() {
@@ -141,11 +172,29 @@ export class Sound {
     this.noise(o, t, 0.15, 'lowpass', 500, 1, 0.5, 0.14);
   }
 
-  kill() {
+  // Kill confirm: a bright two-layer bell chime that climbs higher with each kill in the round.
+  kill(n = 1) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime, o = this.out({ gain: 1, pan: 0 });
-    this.tone(o, t, 'square', 660, 660, 0.12, 0.08);
-    this.tone(o, t + 0.07, 'square', 990, 990, 0.12, 0.12);
+    const steps = [0, 2, 4, 7, 9, 12];
+    const f = 880 * Math.pow(2, steps[Math.min(n - 1, steps.length - 1)] / 12);
+    this.tone(o, t, 'sine', f, f, 0.32, 0.45);              // body
+    this.tone(o, t, 'sine', f * 2.01, f * 2.01, 0.12, 0.3); // shimmer
+    this.tone(o, t, 'triangle', f * 3, f * 2.9, 0.06, 0.12); // click on top
+    this.noise(o, t, 0.03, 'highpass', 6000, 1, 0.08, 0.025);
+    if (n >= 2) this.tone(o, t + 0.09, 'sine', f * 1.5, f * 1.5, 0.15, 0.35);
+  }
+
+  // ACE fanfare
+  ace() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.out({ gain: 1, pan: 0 });
+    [523, 659, 784, 1047, 1319].forEach((f, i) => {
+      this.tone(o, t + i * 0.08, 'triangle', f, f, 0.22, 0.6);
+      this.tone(o, t + i * 0.08, 'sine', f * 2, f * 2, 0.06, 0.4);
+    });
+    this.tone(o, t + 0.45, 'sawtooth', 130, 260, 0.2, 1.2);
+    this.noise(o, t + 0.45, 1.2, 'highpass', 5000, 0.7, 0.12, 1.1);
   }
 
   click() {

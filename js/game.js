@@ -1,18 +1,18 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031165834';
-import { GameMap } from './map.js?v=20261031165834';
-import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031165834';
-import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031165834';
-import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031165834';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031165834';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031165834';
-import { BotBrain, DIFFICULTY } from './bots.js?v=20261031165834';
-import { Abilities } from './abilities.js?v=20261031165834';
-import { Effects } from './effects.js?v=20261031165834';
-import { ViewModel } from './viewmodel.js?v=20261031165834';
-import { Hud } from './hud.js?v=20261031165834';
-import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031165834';
-import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031165834';
-import { NetMixin } from './netgame.js?v=20261031165834';
+import * as THREE from '../lib/three.module.min.js?v=20261031170820';
+import { GameMap } from './map.js?v=20261031170820';
+import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031170820';
+import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031170820';
+import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031170820';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031170820';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031170820';
+import { BotBrain, DIFFICULTY } from './bots.js?v=20261031170820';
+import { Abilities } from './abilities.js?v=20261031170820';
+import { Effects } from './effects.js?v=20261031170820';
+import { ViewModel } from './viewmodel.js?v=20261031170820';
+import { Hud } from './hud.js?v=20261031170820';
+import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031170820';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031170820';
+import { NetMixin } from './netgame.js?v=20261031170820';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -573,12 +573,15 @@ export class Game {
     const sp = Math.hypot(c.vel.x, c.vel.z);
     if (c.onGround && sp > 0.5) {
       c.stepDist += sp * dt;
-      if (c.stepDist > 2.2) {
+      const stride = c.crouching ? 1.25 : c.walking ? 1.6 : 2.2;
+      if (c.stepDist > stride) {
         c.stepDist = 0;
         const loud = sp > RUN_SPEED * 0.75 && !c.walking && !c.crouching;
+        const mode = loud ? 'run' : c.crouching ? 'crouch' : 'walk';
+        // quiet steps are only heard by yourself (and very close by)
+        if (c.isPlayer) this.sound.footstep(null, mode, this.surfaceAt(c), true);
+        else if (loud || c.pos.distanceTo(this.camera.position) < 6) this.sound.footstep(c.pos, mode, this.surfaceAt(c));
         if (loud) {
-          if (c.isPlayer) this.sound.footstep(null, true);
-          else this.sound.footstep(c.pos);
           for (const o of this.combatants) {
             if (o.team === c.team || !o.alive || o.human) continue;
             if (o.pos.distanceTo(c.pos) < 16) this.brain.hear(o, c.pos, 0.5);
@@ -889,6 +892,22 @@ export class Game {
     if (Math.random() < 0.3) this.sound.casing();
   }
 
+  onPlayerKill(victim, n) {
+    this.sound.kill(n);
+    const enemies = this.combatants.filter((c) => c.team !== this.playerTeam).length;
+    if (n >= enemies && enemies >= 3) { this.hud.ace(); this.sound.ace(); this.shake = Math.min(1.2, this.shake + 0.5); }
+    else this.hud.killBanner(victim.name, n);
+  }
+
+  // What's underfoot (for footstep sounds).
+  surfaceAt(c) {
+    const ch = this.map.charAt(c.pos.x, c.pos.z);
+    if (ch === ',') return 'wood';
+    if (c.pos.y > 0.3 && /[12^v<>]/.test(ch)) return this.map.def.theme === 'snow' || this.map.def.theme === 'neon' ? 'metal' : 'stone';
+    if (c.pos.y > 0.3) return 'wood';   // standing on crates
+    return { neon: 'wet', desert: 'sand', snow: 'snow', jungle: 'grass', canals: 'stone' }[this.map.def.theme] || 'stone';
+  }
+
   // floating damage number above the victim
   popDamage(victim, amount, kind) {
     const p = new THREE.Vector3(victim.pos.x, victim.pos.y + 1.9 - 0.5 * victim.crouch, victim.pos.z).project(this.camera);
@@ -1000,12 +1019,12 @@ export class Game {
     this.addUlt(victim, 1);
     if (killer && killer !== victim && killer.team !== victim.team) {
       killer.roundKills = (killer.roundKills || 0) + 1;
-      if (killer.isPlayer) { this.hud.killBanner(victim.name, killer.roundKills); this.sound.streak(killer.roundKills); }
+      if (killer.isPlayer) this.onPlayerKill(victim, killer.roundKills);
       killer.kills++;
       killer.credits = Math.min(MAX_CREDITS, killer.credits + 200);
       this.addUlt(killer, 1);
       if (killer.overdriveT > 0) killer.health = Math.min(100, killer.health + 40);
-      if (killer.isPlayer) this.sound.kill();
+
     }
     if (victim.hasCore) {
       victim.hasCore = false;
