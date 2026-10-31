@@ -939,7 +939,8 @@ export class Game {
       m.root.rotation.y = c.yaw;
       setCharacterGun(m, c.weapon.def.id);
       animateCharacter(m, {
-        speed: Math.hypot(c.vel.x, c.vel.z), crouch: c.crouch, pitch: c.pitch,
+        speed: Math.hypot(c.vel.x, c.vel.z), vx: c.vel.x, vz: c.vel.z, yaw: c.yaw,
+        crouch: c.crouch, pitch: c.pitch, walking: c.walking,
         action: !!c.action, onGround: c.onGround,
       }, dt);
       if (c.marker) {
@@ -1003,6 +1004,8 @@ export class Game {
     const w = p.weapon;
     this.viewmodel.update(dt, {
       speed: Math.hypot(p.vel.x, p.vel.z),
+      side: p.vel.x * Math.cos(p.yaw) - p.vel.z * Math.sin(p.yaw),
+      walking: p.walking || p.crouch > 0.5,
       onGround: p.onGround,
       lookDx: this.lookDx, lookDy: this.lookDy,
       reload: w.reloadT > 0 ? 1 - w.reloadT / w.def.reload : -1,

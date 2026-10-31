@@ -147,27 +147,33 @@ export function buildCharacter(agent, teamColor, isEnemy = false) {
 
   const root = new THREE.Group();
   root.rotation.order = 'YXZ';
-  const body = new THREE.Group();
+  const body = new THREE.Group();      // vertical bob
   root.add(body);
+  const hips = new THREE.Group();      // pelvis twist / roll, carries the legs
+  hips.position.set(0, 0.95, 0);
+  body.add(hips);
 
-  // ---- legs: tapered thigh + shin, one smooth shoe
+  // ---- legs: tapered thigh + shin, shoe on an ankle joint
   const legs = [];
   for (const side of [-1, 1]) {
     const hip = new THREE.Group();
-    hip.position.set(0.105 * side * big, 0.93, 0);
-    body.add(hip);
+    hip.position.set(0.105 * side * big, -0.02, 0);
+    hips.add(hip);
     const knee = new THREE.Group();
     knee.position.set(0, -0.44, 0);
     hip.add(knee);
+    const foot = new THREE.Group();
+    foot.position.set(0, -0.4, 0);
+    knee.add(foot);
     rig.add(hip, G.lathe([[0.001, 0.04], [0.085, 0.02], [0.092 * big, -0.08], [0.08, -0.3], [0.068, -0.44], [0.001, -0.47]], 16), A.pants);
     rig.add(knee, G.lathe([[0.001, 0.03], [0.068, 0.0], [0.072, -0.12], [0.058, -0.34], [0.05, -0.38], [0.001, -0.4]], 16), A.pants);
-    rig.add(knee, G.rbox(0.13, 0.11, 0.27, 0.05), A.shoes, 0, -0.43, -0.045);
-    rig.add(knee, G.rbox(0.135, 0.03, 0.275, 0.014), mix(A.shoes, 0xffffff, 0.7), 0, -0.475, -0.045);
-    legs.push({ hip, knee });
+    rig.add(foot, G.rbox(0.13, 0.11, 0.27, 0.05), A.shoes, 0, -0.03, -0.045);
+    rig.add(foot, G.rbox(0.135, 0.03, 0.275, 0.014), mix(A.shoes, 0xffffff, 0.7), 0, -0.075, -0.045);
+    legs.push({ hip, knee, foot, side });
   }
 
   // ---- pelvis + torso as smooth turned shapes (flattened front-to-back)
-  rig.add(body, G.lathe([[0.001, 1.06], [0.165, 1.04], [0.19 * big, 0.97], [0.18 * big, 0.88], [0.12, 0.83], [0.001, 0.82]], 20), A.pants, 0, 0, 0, 0, 0, 0, 1, 1, 0.72);
+  rig.add(hips, G.lathe([[0.001, 1.06], [0.165, 1.04], [0.19 * big, 0.97], [0.18 * big, 0.88], [0.12, 0.83], [0.001, 0.82]], 20), A.pants, 0, -0.95, 0, 0, 0, 0, 1, 1, 0.72);
   const torso = new THREE.Group();
   torso.position.set(0, 0.99, 0);
   body.add(torso);
@@ -182,13 +188,13 @@ export function buildCharacter(agent, teamColor, isEnemy = false) {
   rig.add(head, G.sph(0.165, 24, 18), A.skin, 0, 0, 0, 0, 0, 0, 0.96, 1.04, 0.98);
   for (const s of [-1, 1]) rig.add(head, G.sph(0.04, 12, 10), A.skin, 0.157 * s, -0.005, 0.01, 0, 0, 0, 0.45, 0.85, 0.7);
   face(rig, head, A);
-  hair(rig, head, torso, body, A, big);
-  outfit(rig, torso, body, A, big);
+  hair(rig, head, torso, hips, A, big);
+  outfit(rig, torso, hips, A, big);
 
   // ---- arms holding the gun (pivot at shoulder height for aiming)
   const aim = new THREE.Group();
-  aim.position.set(0, 1.4, 0);
-  body.add(aim);
+  aim.position.set(0, 0.41, 0);
+  torso.add(aim);
   const gunHolder = new THREE.Group();
   gunHolder.position.set(0.08, -0.1, -0.42);
   aim.add(gunHolder);
@@ -210,7 +216,7 @@ export function buildCharacter(agent, teamColor, isEnemy = false) {
   if (bare) rig.glow(aim, G.box(0.015, 0.1, 0.015), A.accent, rE.x + 0.05, rE.y - 0.03, rE.z - 0.1, 0.9, 0, 0.5);
 
   rig.finish(outlineMaterial(isEnemy ? 0xff2436 : 0x0e1a20, isEnemy ? 0.016 : 0.009));
-  return { root, body, torso, head, aim, legs, gunHolder, gun: null, muzzle: null, gunId: null, walk: 0 };
+  return { root, body, hips, torso, head, aim, legs, gunHolder, gun: null, muzzle: null, gunId: null, phase: 0 };
 }
 
 function face(rig, head, A) {
@@ -245,7 +251,7 @@ function hair(rig, head, torso, body, A, big) {
       rig.add(head, hood, A.outfit, 0, 0.015, 0.02, 0, 0, 0, 1, 1.06, 1.06);
       rig.add(head, G.torus(0.16, 0.024, Math.PI * 1.2), A.outfit2, 0, 0.0, -0.11, 0, 0, Math.PI * 1.4, 1.02, 1.12, 1);
       for (const s of [-1, 1]) rig.glow(head, G.box(0.009, 0.05, 0.008), A.accent, 0.095 * s, -0.035, -0.13, 0.4, 0, 0.3 * s);
-      rig.add(body, G.lathe([[0.2, 0.0], [0.24, -0.25], [0.28, -0.46]], 22), A.outfit, 0, 1.02, 0.01, 0, 0, 0, 1, 1, 0.72);
+      rig.add(body, G.lathe([[0.2, 0.0], [0.24, -0.25], [0.28, -0.46]], 22), A.outfit, 0, 0.07, 0.01, 0, 0, 0, 1, 1, 0.72);
       break;
     }
     case 'medic':
@@ -308,39 +314,140 @@ function outfit(rig, torso, body, A, big) {
     default:
       rig.flat(torso, G.box(0.016, 0.38, 0.01), A.outfit2, 0, 0.24, -0.158);
   }
-  rig.add(body, G.cyl(0.185 * big, 0.185 * big, 0.045, 22), shade(A.outfit2, 0.8), 0, 1.0, 0, 0, 0, 0, 1, 1, 0.73);
+  rig.add(body, G.cyl(0.185 * big, 0.185 * big, 0.045, 22), shade(A.outfit2, 0.8), 0, 0.05, 0, 0, 0, 0, 1, 1, 0.73);
 }
 
-// Poses the rig for this frame.
+// ---------------------------------------------------------------------------
+// Locomotion. Legs follow the actual movement direction relative to where the
+// character faces (forward, backpedal, strafe), with separate walk / run / crouch
+// gaits, a bobbing + twisting pelvis, counter-rotating torso, ankle roll, air and
+// landing poses, turn-in-place steps and a two-stage death.
+// ---------------------------------------------------------------------------
+
+const lerpTo = (cur, target, k) => cur + (target - cur) * k;
+
 export function animateCharacter(m, s, dt) {
-  if (s.dead) {
-    const k = Math.min(1, s.deadT * 4);
-    m.root.rotation.x = k * Math.PI / 2 * 0.95;
-    m.body.position.y = -k * 0.15;
-    m.aim.rotation.x = 0.6 * k;
-    for (const l of m.legs) { l.hip.rotation.x = 0.3 * k; l.knee.rotation.x = -0.4 * k; }
-    return;
-  }
-  m.root.rotation.x = 0;
-  const run = Math.min(s.speed / 5.4, 1);
-  if (s.speed > 0.3) m.walk += dt * (3 + s.speed * 1.5);
-  else m.walk += dt * 1.2 * 0;
-  m.idle = (m.idle || 0) + dt;
+  dt = Math.min(dt, 0.05);
+  const k = Math.min(1, dt * 14);      // joint smoothing
+  m.t = (m.t || 0) + dt;
+
+  if (s.dead) { animateDeath(m, s, dt); return; }
+  if (m.deadPose) resetPose(m);
+
+  // movement in the character's own frame
+  const sy = Math.sin(s.yaw || 0), cy = Math.cos(s.yaw || 0);
+  const vx = s.vx || 0, vz = s.vz || 0;
+  const fwd = -vx * sy - vz * cy;      // + forward, - backward
+  const side = vx * cy - vz * sy;      // + right
+  const speed = Math.hypot(vx, vz);
+  const walking = s.walking || s.crouch > 0.5;
+
+  m.move = lerpTo(m.move || 0, Math.min(1, speed / 3.0), Math.min(1, dt * 8));
+  m.runAmt = lerpTo(m.runAmt || 0, !walking && speed > 3.6 ? 1 : 0, Math.min(1, dt * 6));
+  const dirF = speed > 0.2 ? fwd / speed : (m.dirF ?? 1);
+  const dirS = speed > 0.2 ? side / speed : (m.dirS ?? 0);
+  m.dirF = lerpTo(m.dirF ?? 1, dirF, Math.min(1, dt * 10));
+  m.dirS = lerpTo(m.dirS ?? 0, dirS, Math.min(1, dt * 10));
+
+  // turning on the spot makes the feet shuffle
+  const dyaw = Math.atan2(Math.sin((s.yaw || 0) - (m.lastYaw ?? s.yaw ?? 0)), Math.cos((s.yaw || 0) - (m.lastYaw ?? s.yaw ?? 0)));
+  m.lastYaw = s.yaw || 0;
+  m.shuffle = Math.max(0, (m.shuffle || 0) - dt * 3);
+  if (m.move < 0.15 && Math.abs(dyaw) > 0.002) m.shuffle = Math.min(0.6, m.shuffle + Math.abs(dyaw) * 4);
+
+  // gait cycle: stride length depends on gait so feet don't skate
+  const stride = s.crouch > 0.5 ? 0.75 : walking ? 0.95 : 1.35;
+  m.phase += dt * (speed / stride) * Math.PI + m.shuffle * dt * 10;
+
+  // air / landing
+  const air = !s.onGround;
+  m.air = lerpTo(m.air || 0, air ? 1 : 0, Math.min(1, dt * (air ? 8 : 16)));
+  if (m.wasAir && !air) m.land = 1;
+  m.wasAir = air;
+  m.land = Math.max(0, (m.land || 0) - dt * 4);
+
   const cr = s.crouch;
-  const sw = Math.sin(m.walk) * 0.7 * run;
+  const run = m.runAmt;
+  const amp = Math.max(m.move, Math.min(0.5, m.shuffle)) * (0.42 + 0.33 * run) * (1 - cr * 0.35);
+  const kneeAmp = 0.55 + 0.75 * run;
+
   m.legs.forEach((l, i) => {
-    const swing = i ? -sw : sw;
-    const bend = Math.max(0, (i ? Math.sin(m.walk) : -Math.sin(m.walk))) * 1.0 * run;
-    l.hip.rotation.x = swing + cr * 1.2 + (s.onGround ? 0 : 0.5);
-    l.knee.rotation.x = -bend - cr * 2.2 - (s.onGround ? 0 : 0.9);
+    const q = m.phase + (i ? Math.PI : 0);
+    const sw = Math.sin(q);                         // + = leg forward
+    const lift = Math.max(0, Math.cos(q));          // swinging forward -> knee bends
+    // sagittal swing for forward/back, lateral swing for strafing
+    let hx = sw * amp * m.dirF * 1.15;
+    const hz = sw * amp * m.dirS * 0.7;
+    let kx = -(lift * kneeAmp * amp * 1.4 + 0.08 * m.move);
+    let fx = -sw * amp * 0.5 * m.dirF + lift * amp * 0.6;
+    // crouch base pose
+    hx += cr * 1.15; kx += -cr * 2.15; fx += cr * 1.0;
+    // airborne tuck, landing squat
+    hx = lerpTo(hx, 0.55 + (i ? 0.25 : -0.1), m.air);
+    kx = lerpTo(kx, -1.1 - (i ? 0.3 : 0), m.air);
+    fx = lerpTo(fx, 0.35, m.air);
+    hx += m.land * 0.45; kx -= m.land * 0.9; fx += m.land * 0.45;
+    l.hip.rotation.x = lerpTo(l.hip.rotation.x, hx, k);
+    l.hip.rotation.z = lerpTo(l.hip.rotation.z, hz, k);
+    l.knee.rotation.x = lerpTo(l.knee.rotation.x, kx, k);
+    l.foot.rotation.x = lerpTo(l.foot.rotation.x, fx, k);
   });
-  const bob = Math.abs(Math.cos(m.walk)) * 0.04 * run;
-  const breathe = Math.sin(m.idle * 2.2) * 0.008;
-  m.body.position.y = -0.42 * cr + bob - (s.action ? 0.25 : 0);
-  m.torso.rotation.x = cr * 0.25 + run * 0.1;
-  m.torso.rotation.y = Math.sin(m.walk) * 0.1 * run;
-  m.torso.scale.y = 1 + breathe;
-  m.aim.rotation.x = s.pitch * 0.85 - (s.action ? 0.7 : 0);
-  m.head.rotation.x = s.pitch * 0.4 - cr * 0.2;
-  m.head.rotation.z = Math.sin(m.walk * 0.5) * 0.04 * run;
+
+  // pelvis: two bounces per cycle, twist and roll toward the planted leg
+  const q = m.phase;
+  const bounce = (0.022 + 0.035 * run) * m.move * (1 - Math.cos(2 * q)) * 0.5;
+  const breathe = Math.sin(m.t * 2.1) * 0.006;
+  const bodyY = -0.42 * cr + bounce - m.land * 0.12 - (s.action ? 0.25 : 0) + m.air * 0.05;
+  m.body.position.y = lerpTo(m.body.position.y, bodyY, Math.min(1, dt * 20));
+  const twist = Math.sin(q) * (0.12 + 0.1 * run) * m.move * m.dirF;
+  m.hips.rotation.y = lerpTo(m.hips.rotation.y, twist, k);
+  m.hips.rotation.z = lerpTo(m.hips.rotation.z, Math.sin(q) * 0.05 * m.move + (m.move < 0.1 ? Math.sin(m.t * 0.7) * 0.015 : 0), k);
+
+  // torso: counter-twist, lean into motion, sway
+  const lean = cr * 0.22 + run * 0.14 * m.dirF + m.land * 0.15 - m.air * 0.05;
+  m.torso.rotation.x = lerpTo(m.torso.rotation.x, lean, k);
+  m.torso.rotation.y = lerpTo(m.torso.rotation.y, -twist * 0.85, k);
+  m.torso.rotation.z = lerpTo(m.torso.rotation.z, -m.dirS * 0.07 * m.move - Math.sin(q) * 0.025 * m.move, k);
+  m.torso.position.y = 0.99 + breathe;
+
+  // keep the gun and head pointed where the character aims
+  m.aim.rotation.x = lerpTo(m.aim.rotation.x, s.pitch * 0.85 - m.torso.rotation.x - (s.action ? 0.7 : 0) + Math.sin(2 * q) * 0.02 * m.move, k);
+  m.aim.rotation.y = -m.torso.rotation.y - m.hips.rotation.y;
+  m.aim.rotation.z = -m.torso.rotation.z * 0.6;
+  m.head.rotation.x = lerpTo(m.head.rotation.x, s.pitch * 0.45 - m.torso.rotation.x * 0.8, k);
+  m.head.rotation.y = -(m.torso.rotation.y + m.hips.rotation.y) * 0.8;
+  m.head.rotation.z = -m.torso.rotation.z * 0.5;
+}
+
+function resetPose(m) {
+  m.deadPose = false;
+  m.root.rotation.set(0, m.root.rotation.y, 0);
+  m.root.position.y = 0;
+  m.body.rotation.set(0, 0, 0);
+}
+
+// Knees buckle, then the body tips over in a random direction and settles.
+function animateDeath(m, s, dt) {
+  if (!m.deadPose) {
+    m.deadPose = true;
+    m.fallDir = Math.random() < 0.6 ? 1 : -1;              // backward or forward
+    m.fallSide = (Math.random() - 0.5) * 0.9;
+  }
+  const t = s.deadT;
+  const buckle = Math.min(1, t * 5);
+  const fall = Math.max(0, Math.min(1, (t - 0.12) * 3.2));
+  const ease = fall * fall * (3 - 2 * fall);
+  const settle = Math.max(0, Math.min(1, (t - 0.45) * 4));
+  const bounce = Math.sin(settle * Math.PI) * 0.06;
+  m.root.rotation.x = m.fallDir * ease * Math.PI / 2 * 0.95 - bounce * m.fallDir;
+  m.root.rotation.z = m.fallSide * ease;
+  m.body.position.y = -buckle * 0.25 + ease * 0.1;
+  for (const l of m.legs) {
+    l.hip.rotation.x = buckle * 0.9 * (1 - ease * 0.6) * (m.fallDir > 0 ? 1 : 0.4);
+    l.knee.rotation.x = -buckle * 1.5 * (1 - ease * 0.7);
+    l.foot.rotation.x = buckle * 0.5;
+  }
+  m.torso.rotation.x = -m.fallDir * 0.3 * buckle + ease * 0.2 * m.fallDir;
+  m.aim.rotation.x = 0.9 * buckle;
+  m.head.rotation.x = -0.4 * ease * m.fallDir;
 }

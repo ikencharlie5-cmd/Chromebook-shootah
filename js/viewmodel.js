@@ -228,11 +228,21 @@ export class ViewModel {
   update(dt, s) {
     this.holder.visible = s.visible;
     if (!this.current) return;
-    if (s.onGround && s.speed > 0.5) this.bob += dt * (4 + s.speed * 1.4);
-    const bobAmt = s.onGround ? Math.min(s.speed / 5.4, 1) : 0;
-    const bx = Math.sin(this.bob) * 0.012 * bobAmt;
-    const by = -Math.abs(Math.cos(this.bob)) * 0.012 * bobAmt;
-
+    // footstep-synced figure-8 bob, strafe roll, landing dip, idle breathing
+    this.t = (this.t || 0) + dt;
+    if (s.onGround && s.speed > 0.3) this.bob += dt * (s.speed / (s.walking ? 0.95 : 1.35)) * Math.PI;
+    const moveAmt = s.onGround ? Math.min(s.speed / 5.4, 1) : 0;
+    this.bobAmt = (this.bobAmt || 0) + (moveAmt - (this.bobAmt || 0)) * Math.min(1, dt * 8);
+    const bx = Math.sin(this.bob) * 0.014 * this.bobAmt;
+    const by = -Math.abs(Math.cos(this.bob)) * 0.016 * this.bobAmt + Math.sin(this.t * 1.8) * 0.0025 * (1 - this.bobAmt);
+    if (this.wasAir && s.onGround) this.landT = 1;
+    this.wasAir = !s.onGround;
+    this.landT = Math.max(0, (this.landT || 0) - dt * 5);
+    const land = Math.sin(this.landT * Math.PI) * 0.035;
+    const airLift = s.onGround ? 0 : 0.015;
+    this.roll = (this.roll || 0) + ((-(s.side || 0) / 5.4) * 0.07 - (this.roll || 0)) * Math.min(1, dt * 8);
+    const sprint = !s.walking && s.speed > 4.5 && s.onGround ? 1 : 0;
+    this.sprint = (this.sprint || 0) + (sprint - (this.sprint || 0)) * Math.min(1, dt * 6);
     this.swayX += (-s.lookDx * 0.0004 - this.swayX) * Math.min(1, dt * 10);
     this.swayY += (s.lookDy * 0.0004 - this.swayY) * Math.min(1, dt * 10);
     this.swayX = Math.max(-0.04, Math.min(0.04, this.swayX));
@@ -275,10 +285,14 @@ export class ViewModel {
 
     const g = this.current.group;
     g.position.set(
-      this.base.x + bx + this.swayX - swingRot * 0.1,
-      this.base.y + by + this.swayY - drop - s.crouch * 0.01,
-      this.base.z + this.kickZ,
+      this.base.x + bx + this.swayX - swingRot * 0.1 + this.sprint * 0.015,
+      this.base.y + by + this.swayY - drop - s.crouch * 0.01 - land + airLift - this.sprint * 0.025,
+      this.base.z + this.kickZ + this.sprint * 0.02,
     );
-    g.rotation.set(this.kickRot - tilt, (this.baseYaw || 0) + swingRot * 0.8, swingRot * 0.6);
+    g.rotation.set(
+      this.kickRot - tilt - this.sprint * 0.08 + Math.cos(this.bob * 2) * 0.01 * this.bobAmt,
+      (this.baseYaw || 0) + swingRot * 0.8 + this.sprint * 0.12,
+      swingRot * 0.6 + this.roll + Math.sin(this.bob) * 0.02 * this.bobAmt,
+    );
   }
 }
