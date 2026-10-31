@@ -200,6 +200,26 @@ export class Sound {
     notes.forEach((f, i) => this.tone(o, t + i * 0.12, 'triangle', f, f, 0.2, 0.25));
   }
 
+  heartbeat() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.out({ gain: 1, pan: 0 });
+    this.tone(o, t, 'sine', 70, 45, 0.5, 0.12);
+    this.tone(o, t + 0.16, 'sine', 60, 40, 0.35, 0.12);
+  }
+
+  streak(n) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.out({ gain: 1, pan: 0 });
+    const base = [660, 784, 880, 1047, 1175][Math.min(n - 1, 4)];
+    for (let i = 0; i < Math.min(n, 4); i++) this.tone(o, t + i * 0.07, 'triangle', base * (1 + i * 0.25), base * (1 + i * 0.25), 0.18, 0.14);
+  }
+
+  casing() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.25 + Math.random() * 0.1, o = this.out({ gain: 0.25, pan: 0.3 });
+    this.tone(o, t, 'triangle', 3400 + Math.random() * 600, 2800, 0.12, 0.05);
+  }
+
   // ---- abilities ----
 
   throw(pos = null) {

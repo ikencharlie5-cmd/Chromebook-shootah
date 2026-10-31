@@ -50,9 +50,11 @@ html, body {
 
 #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 #crosshair .ch { position: absolute; background: var(--cross); box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
-#crosshair .top, #crosshair .bottom { width: 2px; height: 7px; left: -1px; }
-#crosshair .left, #crosshair .right { width: 7px; height: 2px; top: -1px; }
-#crosshair .dot { position: absolute; width: 2px; height: 2px; left: -1px; top: -1px; background: var(--cross); box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
+#crosshair .top, #crosshair .bottom { width: var(--chT, 2px); height: var(--chL, 7px); left: calc(var(--chT, 2px) / -2); }
+#crosshair .left, #crosshair .right { width: var(--chL, 7px); height: var(--chT, 2px); top: calc(var(--chT, 2px) / -2); }
+#crosshair .dot { position: absolute; width: var(--chT, 2px); height: var(--chT, 2px); left: calc(var(--chT, 2px) / -2); top: calc(var(--chT, 2px) / -2); background: var(--cross); box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
+#crosshair.nodot .dot { display: none; }
+#crosshair.noline .ch { display: none; }
 
 #hitmarker {
   position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; opacity: 0;
@@ -348,3 +350,52 @@ button.mini { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
 #partyMore { position: absolute; left: 50%; top: 80px; transform: translateX(-50%); font-size: 13px; opacity: 0.8; }
 .play-big:disabled { background: #6a6a6a; box-shadow: none; cursor: default; font-size: 22px; letter-spacing: 2px; }
 .lobby-left { width: 330px; }
+
+/* ---------- combat feedback ---------- */
+#lowHp { position: absolute; inset: 0; box-shadow: inset 0 0 200px rgba(200, 0, 20, 0.75); opacity: 0; pointer-events: none; }
+#dmgNumbers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.dn { position: absolute; font-weight: 900; font-size: 20px; color: #fff; text-shadow: 0 0 4px #000, 0 2px 2px #000; transform: translate(-50%, -50%); white-space: nowrap; }
+.dn.head { color: #ffd23f; font-size: 26px; }
+.dn.kill { color: #ff4f5a; font-size: 28px; }
+#killBanner { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%) scale(0.8); display: flex; align-items: center; gap: 12px;
+  background: linear-gradient(90deg, rgba(255,60,80,0), rgba(255,60,80,0.85) 20%, rgba(255,60,80,0.85) 80%, rgba(255,60,80,0)); padding: 8px 60px; opacity: 0; transition: opacity 0.15s, transform 0.15s; }
+#killBanner.on { opacity: 1; transform: translateX(-50%) scale(1); }
+#killBanner .kb-icon { font-size: 34px; font-weight: 900; }
+#killBanner .kb-title { font-size: 22px; font-weight: 900; letter-spacing: 4px; }
+#killBanner .kb-name { font-size: 13px; letter-spacing: 2px; opacity: 0.9; }
+#killBanner.streak .kb-title { color: #ffd23f; }
+#deathCam { position: absolute; top: 33%; width: 100%; text-align: center; font-size: 15px; letter-spacing: 3px; text-shadow: 0 1px 4px #000; }
+
+/* ---------- ranks ---------- */
+.rank-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; letter-spacing: 1px; color: var(--rk); background: rgba(8,10,16,0.7);
+  padding: 3px 9px 3px 5px; border: 1px solid color-mix(in srgb, var(--rk) 60%, transparent); }
+.rank-badge .gem { width: 14px; height: 16px; background: linear-gradient(160deg, #fff, var(--rk) 45%, color-mix(in srgb, var(--rk) 50%, #000));
+  clip-path: polygon(50% 0, 100% 28%, 100% 72%, 50% 100%, 0 72%, 0 28%); display: inline-block; }
+.rank-badge b { color: #fff; } .rank-badge em { font-style: normal; font-size: 9px; letter-spacing: 1px; }
+.rank-badge.big { font-size: 20px; padding: 6px 16px 6px 10px; } .rank-badge.big .gem { width: 30px; height: 34px; }
+#tagRank { margin-bottom: 4px; }
+.queue-toggle { display: flex; gap: 3px; margin-bottom: 8px; }
+.queue-toggle button { margin: 0; padding: 4px 6px; font-size: 11px; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.3); }
+.queue-toggle button.on { background: #fff; color: #222; }
+#matchRank { margin: 8px auto 16px; width: 360px; }
+.mr-bar { height: 10px; background: rgba(255,255,255,0.15); margin: 10px 0 6px; overflow: hidden; }
+#mrFill { height: 100%; width: 0; background: var(--rk, #ffd23f); transition: width 1.4s cubic-bezier(.2,.8,.2,1); }
+#mrDelta { font-size: 26px; font-weight: 900; }
+#mrDelta.up { color: #5dffb0; } #mrDelta.down { color: #ff6b6b; }
+.rank-up { animation: rankup 1.2s ease-out; }
+@keyframes rankup { 0% { transform: scale(0.6); filter: brightness(3); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+.end-table { width: min(560px, 92vw); margin: 0 auto; border-collapse: collapse; font-size: 14px; }
+.end-table th { font-size: 11px; opacity: 0.6; letter-spacing: 1px; padding: 4px 8px; text-align: left; }
+.end-table td { padding: 5px 8px; text-align: left; background: rgba(255,255,255,0.04); }
+.end-table tr.ally td:first-child { border-left: 3px solid var(--ally); } .end-table tr.enemy td:first-child { border-left: 3px solid var(--enemy); }
+.end-table tr.me td { color: var(--gold); font-weight: 800; }
+.mvp { background: var(--gold); color: #1a1a1a; font-size: 10px; font-weight: 900; padding: 1px 5px; letter-spacing: 1px; }
+#matchEnd .panel { width: min(640px, 96vw); }
+
+.logo { white-space: nowrap; font-size: 22px; }
+.lobby-top { flex-wrap: nowrap; }
+.rank-badge { white-space: nowrap; }
+.lobby-tabs .tab { white-space: nowrap; }
+#sideTag.practice { left: 50% !important; top: 78px; transform: translateX(-50%); color: var(--gold) !important; }
+@media (max-width: 1000px) { .lobby-tabs .tab { padding: 8px 10px; font-size: 13px; } .logo { font-size: 18px; } }

@@ -1,11 +1,12 @@
-import { Game } from './game.js?v=20261031053739';
-import { Sound } from './audio.js?v=20261031053739';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031053739';
-import { Locker } from './locker.js?v=20261031053739';
-import { SKINS, RARITY_ORDER, equippedFor } from './skins.js?v=20261031053739';
-import { makeRoster } from './game.js?v=20261031053739';
-import { randomMapDef } from './maps.js?v=20261031053739';
-import { Party, MAX_PARTY } from './net.js?v=20261031053739';
+import { Game } from './game.js?v=20261031055224';
+import { Sound } from './audio.js?v=20261031055224';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031055224';
+import { Locker } from './locker.js?v=20261031055224';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031055224';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031055224';
+import { makeRoster } from './game.js?v=20261031055224';
+import { randomMapDef } from './maps.js?v=20261031055224';
+import { Party, MAX_PARTY } from './net.js?v=20261031055224';
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,7 +14,8 @@ const $ = (id) => document.getElementById(id);
 
 const DEFAULTS = {
   difficulty: 'normal', sensitivity: 1, fov: 90, volume: 0.6, quality: 'medium',
-  crossColor: '#00ff9c', fullscreen: false, showFps: false, agent: 'haze', name: '',
+  crossColor: '#00ff9c', fullscreen: false, showFps: false, agent: 'haze', name: '', queue: 'unrated',
+  chLen: 7, chThick: 2, chGap: 3, chDot: true, tipsLeft: 3,
 };
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('cbs-settings') || '{}') }; } catch { /* ignore */ }
@@ -136,7 +138,10 @@ function bindSettings() {
   diff.value = settings.difficulty; sens.value = settings.sensitivity; fov.value = settings.fov;
   vol.value = settings.volume; qual.value = settings.quality; cross.value = settings.crossColor;
   fs.checked = settings.fullscreen; fps.checked = settings.showFps;
+  const chLen = $('setChLen'), chThick = $('setChThick'), chGap = $('setChGap'), chDot = $('setChDot');
+  chLen.value = settings.chLen; chThick.value = settings.chThick; chGap.value = settings.chGap; chDot.checked = settings.chDot;
   const labels = () => {
+    $('chLenVal').textContent = settings.chLen; $('chThickVal').textContent = settings.chThick; $('chGapVal').textContent = settings.chGap;
     $('sensVal').textContent = Number(settings.sensitivity).toFixed(2);
     $('fovVal').textContent = settings.fov;
     $('volVal').textContent = Math.round(settings.volume * 100) + '%';
@@ -151,11 +156,13 @@ function bindSettings() {
     settings.crossColor = cross.value;
     settings.fullscreen = fs.checked;
     settings.showFps = fps.checked;
+    settings.chLen = Number(chLen.value); settings.chThick = Number(chThick.value);
+    settings.chGap = Number(chGap.value); settings.chDot = chDot.checked;
     labels();
     saveSettings();
     game.applySettings();
   };
-  for (const el of [diff, sens, fov, vol, qual, cross, fs, fps]) el.addEventListener('input', apply);
+  for (const el of [diff, sens, fov, vol, qual, cross, fs, fps, chLen, chThick, chGap, chDot]) el.addEventListener('input', apply);
 }
 bindSettings();
 
@@ -198,7 +205,31 @@ function refreshLobby() {
 
 const party = new Party();
 window.__party = party;
-const meInfo = () => ({ name: settings.name, agent: settings.agent, held: lobbyHeld(), skins: game.playerSkins() });
+const meInfo = () => ({ name: settings.name, agent: settings.agent, held: lobbyHeld(), skins: game.playerSkins(), rr: locker.profile.rr });
+
+// ---- queue: unrated / ranked / practice ----
+function refreshRank() {
+  $('lobbyRank').innerHTML = badgeHtml(locker.profile.rr);
+  $('tagRank').innerHTML = badgeHtml(locker.profile.rr);
+}
+function renderQueue() {
+  let q = settings.queue;
+  if (party.active && q === 'practice') q = settings.queue = 'unrated';
+  for (const b of $('queueToggle').querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.q === q);
+    b.disabled = party.active && !party.isHost || (party.active && b.dataset.q === 'practice');
+  }
+  $('modeTitle').textContent = q === 'ranked' ? 'RANKED · CORE RUSH' : q === 'practice' ? 'PRACTICE RANGE' : 'CORE RUSH';
+  if (!party.active) {
+    $('modeSub').textContent = q === 'ranked' ? `Bots match your rank (${rankOf(locker.profile.rr).name}) · win to climb`
+      : q === 'practice' ? 'Targets, free guns & abilities, no timer' : '3v3 · bots · random map · first to 7';
+  }
+}
+for (const b of $('queueToggle').querySelectorAll('button')) b.addEventListener('click', () => {
+  if (party.active && !party.isHost) return;
+  settings.queue = b.dataset.q; saveSettings(); renderQueue();
+  if (party.isHost) party.send({ t: 'queue', q: settings.queue });
+});
 
 $('nameInput').value = settings.name;
 $('nameInput').addEventListener('input', () => {
@@ -268,8 +299,11 @@ function renderParty() {
   if (!party.isHost) { play.disabled = true; play.textContent = 'WAITING FOR HOST'; }
   else if (party.mode === 'coop' && n > 3) { play.disabled = true; play.textContent = 'MAX 3 vs BOTS'; }
 }
-party.onChange = renderParty;
+party.onChange = () => { renderParty(); renderQueue(); };
+party.on('queue', (m) => { settings.queue = m.q; renderQueue(); });
 renderParty();
+refreshRank();
+renderQueue();
 
 function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -280,12 +314,23 @@ function startNetMatch() {
   }));
   const roster = makeRoster(humans);
   const mapId = randomMapDef().id;
+  const ranked = settings.queue === 'ranked';
+  const rrs = party.members.map((m) => m.rr || 0);
+  game.ranked = ranked;
+  game.skill = ranked ? skillForRR(rrs.reduce((a, b) => a + b, 0) / rrs.length) : null;
   party.inMatch = true;
-  party.send({ t: 'start', roster, mapId });
+  party.send({ t: 'start', roster, mapId, ranked });
   beginMatch(roster, mapId);
+  if (!ranked) game.applySettings();
+}
+
+function useTip() {
+  game.tips = settings.tipsLeft > 0;
+  if (settings.tipsLeft > 0) { settings.tipsLeft--; saveSettings(); }
 }
 
 function beginMatch(roster, mapId) {
+  useTip();
   sound.init();
   for (const id of ['agentSelect', 'menu', 'matchEnd', 'pauseMenu', 'locker']) $(id).classList.add('hidden');
   game.hud.show(true);
@@ -295,7 +340,7 @@ function beginMatch(roster, mapId) {
   lock();
 }
 
-party.on('start', (m) => { if (!party.isHost) { party.inMatch = true; beginMatch(m.roster, m.mapId); } });
+party.on('start', (m) => { if (!party.isHost) { party.inMatch = true; game.ranked = !!m.ranked; beginMatch(m.roster, m.mapId); } });
 party.on('in', (m, from) => game.onRemoteInput(from, m));
 party.on('s', (m) => game.applySnapshot(m));
 party.on('quit', (m, from) => game.onMemberLeft(from));
@@ -387,7 +432,10 @@ function startGame() {
   $('matchEnd').classList.add('hidden');
   $('pauseMenu').classList.add('hidden');
   game.hud.show(true);
-  game.startMatch(picked);
+  useTip();
+  if (settings.queue === 'practice') game.startPractice(picked);
+  else if (settings.queue === 'ranked') game.startMatch(picked, null, { ranked: true, skill: skillForRR(locker.profile.rr) });
+  else { game.ranked = false; game.applySettings(); game.startMatch(picked); }
   game.paused = true;
   lock();
 }
@@ -440,12 +488,54 @@ game.onMatchEnd = (won, mine, theirs, player) => {
   r.textContent = won ? 'VICTORY' : 'DEFEAT';
   r.className = won ? 'win' : 'loss';
   $('matchScore').textContent = `${mine} — ${theirs}`;
-  $('matchStats').textContent = `Your stats: ${player.kills} kills · ${player.deaths} deaths`;
-  const earned = 50 + player.kills * 10 + (won ? 100 : 0);
+  $('matchStats').innerHTML = matchTable(player);
+  const earned = 50 + player.kills * 10 + (won ? 100 : 0) + (game.ranked ? 50 : 0);
   locker.addCoins(earned);
   $('matchCoins').textContent = `+ ¤ ${earned} coins — spend them in the Locker`;
+  showRankResult(won, mine, theirs, player);
   $('matchEnd').classList.remove('hidden');
 };
+
+// End-of-match scoreboard with damage, headshot % and an MVP.
+function matchTable(player) {
+  const rows = [...game.combatants].map((c) => ({
+    c, score: c.kills * 150 + (c.dmgDealt || 0) - c.deaths * 40,
+    hs: c.hitsLanded ? Math.round((c.headHits || 0) / c.hitsLanded * 100) : 0,
+  })).sort((a, b) => b.score - a.score);
+  const mvp = rows[0]?.c;
+  const line = (r) => `<tr class="${r.c === player ? 'me' : ''} ${r.c.team === player.team ? 'ally' : 'enemy'}">
+    <td>${r.c === mvp ? '<span class="mvp">MVP</span> ' : ''}${escapeHtml(r.c.name)}</td><td>${r.c.agent.name}</td>
+    <td>${r.c.kills}</td><td>${r.c.deaths}</td><td>${Math.round(r.c.dmgDealt || 0)}</td><td>${r.hs}%</td></tr>`;
+  return `<table class="end-table"><tr><th>PLAYER</th><th>AGENT</th><th>K</th><th>D</th><th>DMG</th><th>HS</th></tr>${rows.map(line).join('')}</table>`;
+}
+
+function showRankResult(won, mine, theirs, player) {
+  const box = $('matchRank');
+  if (!game.ranked) { box.classList.add('hidden'); return; }
+  const prof = locker.profile;
+  const before = prof.rr, beforeRank = rankOf(before);
+  const delta = rrDelta(won, mine, theirs, player.kills, player.deaths);
+  prof.rr = Math.max(0, before + delta);
+  prof.ranked.played++; if (won) prof.ranked.wins++;
+  prof.ranked.peak = Math.max(prof.ranked.peak, prof.rr);
+  saveProfile(prof);
+  const after = rankOf(prof.rr);
+  box.classList.remove('hidden');
+  $('mrBadge').innerHTML = badgeHtml(prof.rr, true);
+  $('mrBadge').classList.remove('rank-up');
+  box.style.setProperty('--rk', after.color);
+  $('mrFill').style.transition = 'none';
+  $('mrFill').style.width = `${(beforeRank.tier === after.tier && beforeRank.div === after.div ? beforeRank.progress : delta > 0 ? 0 : 1) * 100}%`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    $('mrFill').style.transition = '';
+    $('mrFill').style.width = `${(after.legend ? 1 : after.progress) * 100}%`;
+  }));
+  const changed = after.name !== beforeRank.name;
+  $('mrDelta').textContent = `${delta > 0 ? '+' : ''}${delta} RR${changed ? (delta > 0 ? ' · RANK UP!' : ' · RANK DOWN') : ''}`;
+  $('mrDelta').className = delta > 0 ? 'up' : 'down';
+  if (changed && delta > 0) { $('mrBadge').classList.add('rank-up'); sound.announce(true); }
+  refreshRank();
+}
 
 // The buy phase ended while the cursor was free for the buy menu.
 game.onBuyAutoClose = () => {

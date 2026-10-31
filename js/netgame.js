@@ -1,7 +1,7 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031053739';
-import { makeWeaponState } from './weapons.js?v=20261031053739';
-import { applyMovement } from './entities.js?v=20261031053739';
-import { wrapAngle, yawTo } from './util.js?v=20261031053739';
+import * as THREE from '../lib/three.module.min.js?v=20261031055224';
+import { makeWeaponState } from './weapons.js?v=20261031055224';
+import { applyMovement } from './entities.js?v=20261031055224';
+import { wrapAngle, yawTo } from './util.js?v=20261031055224';
 
 // Multiplayer glue mixed into Game.
 //   Host: simulates the whole match (bots + every player), applies remote players' inputs,
@@ -30,7 +30,7 @@ export const NetMixin = {
     if (!this.net?.isHost) return;
     const core = this.core;
     const snap = {
-      t: 's',
+      t: 's', ht: r3(this.time),
       ph: this.phase, pt: r2(this.phaseT), rd: this.round, sc: this.score, at: this.attackTeam,
       co: { st: core.state, p: [r2(core.pos.x), r2(core.pos.y), r2(core.pos.z)], tm: r2(core.timer || 0), si: core.site, ca: core.carrier ? core.carrier.id : -1 },
       cs: this.combatants.map((c) => {
@@ -45,7 +45,7 @@ export const NetMixin = {
           ac: c.action ? [c.action.type === 'plant' ? 1 : 2, r2(c.action.t)] : 0,
           ch: [c.charges.q, c.charges.e, c.charges.f], u: c.ult,
           sp: [c.spotBy[0] > this.time ? 1 : 0, c.spotBy[1] > this.time ? 1 : 0], rv: c.revealUntil > this.time ? 1 : 0,
-          tp: c.tp, so: c.scoped ? 1 : 0,
+          tp: c.tp, so: c.scoped ? 1 : 0, dd: Math.round(c.dmgDealt || 0), hl: c.hitsLanded || 0, hh: c.headHits || 0,
         };
       }),
       ab: this.abilities.netState(),
@@ -53,6 +53,32 @@ export const NetMixin = {
     };
     this.netEvents = [];
     this.net.send(snap);
+  },
+
+  // Host: remember recent positions so shots can be checked against what the shooter saw.
+  recordHistory() {
+    for (const c of this.combatants) {
+      const h = c.hist || (c.hist = []);
+      h.push({ t: this.time, x: c.pos.x, y: c.pos.y, z: c.pos.z, cr: c.crouch });
+      while (h.length && this.time - h[0].t > 0.6) h.shift();
+    }
+  },
+
+  // Temporarily move everyone (except the shooter) back to time t; returns a restore function.
+  rewindTo(t, shooter) {
+    const saved = [];
+    t = Math.max(t, this.time - 0.35);    // cap compensation at 350ms
+    for (const c of this.combatants) {
+      if (c === shooter || !c.alive || !c.hist?.length) continue;
+      const h = c.hist;
+      let a = h[0], b = h[h.length - 1];
+      for (let i = h.length - 1; i >= 0; i--) if (h[i].t <= t) { a = h[i]; b = h[Math.min(i + 1, h.length - 1)]; break; }
+      const k = b.t > a.t ? Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t))) : 0;
+      saved.push([c, c.pos.x, c.pos.y, c.pos.z, c.crouch]);
+      c.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+      c.crouch = a.cr + (b.cr - a.cr) * k;
+    }
+    return () => { for (const [c, x, y, z, cr] of saved) { c.pos.set(x, y, z); c.crouch = cr; } };
   },
 
   // A client's input packet.
@@ -71,7 +97,11 @@ export const NetMixin = {
     c.remoteAct = !!m.act;
     if (SLOTS.includes(m.sl) && m.sl !== c.slot && c.inv[m.sl]) this.switchSlot(c, m.sl, true);
     if (m.rl) this.startReload(c);
-    for (const s of (m.shots || []).slice(0, 20)) this.remoteShoot(c, s);
+    for (const s of (m.shots || []).slice(0, 20)) {
+      const restore = typeof s.ht === 'number' ? this.rewindTo(s.ht, c) : null;
+      this.remoteShoot(c, s);
+      restore?.();
+    }
     for (const k of (m.casts || []).slice(0, 4)) if (['q', 'e', 'f', 'x'].includes(k)) this.abilities.cast(c, k);
   },
 
@@ -121,7 +151,7 @@ export const NetMixin = {
       if (p.hasCore && this.map.siteAt(p.pos.x, p.pos.z)) hint = 'Hold 4 to plant the Core';
       else if (this.sideOf(p.team) === 'DEF' && this.core.state === 'planted' && Math.hypot(this.core.pos.x - p.pos.x, this.core.pos.z - p.pos.z) < 1.8) hint = 'Hold 4 to defuse';
     }
-    this.hud.hint(hint);
+    this.hud.hint(hint || this.tipHint());
 
     this.updateModels(dt);
     this.effects.update(dt);
@@ -165,6 +195,7 @@ export const NetMixin = {
   applySnapshot(s) {
     if (!this.isClient || !this.running) return;
     this.phase = s.ph; this.phaseT = s.pt; this.round = s.rd; this.score = s.sc; this.attackTeam = s.at;
+    this.hostTime = s.ht; this.hostTimeAt = this.time;
     this.map.barriers.visible = s.ph === 'buy';
     if (this.buyOpen && s.ph !== 'buy') { this.toggleBuy(false); this.onBuyAutoClose?.(); }
 
@@ -181,6 +212,7 @@ export const NetMixin = {
       c.alive = !!o.a;
       if (wasAlive && !c.alive) { c.deadT = 0; if (c === p) { this.hud.scope(false); p.scoped = false; } }
       c.health = o.h; c.armor = o.ar; c.credits = o.cd; c.kills = o.k; c.deaths = o.d; c.hasCore = !!o.hc;
+      c.dmgDealt = o.dd; c.hitsLanded = o.hl; c.headHits = o.hh;
       c.overdriveT = o.od ? 1 : 0;
       c.action = o.ac ? { type: o.ac[0] === 1 ? 'plant' : 'defuse', t: o.ac[1] } : null;
       c.spotBy[this.playerTeam] = o.sp[this.playerTeam] ? this.time + 0.3 : 0;
@@ -248,10 +280,14 @@ export const NetMixin = {
       }
       case 'dmg': {
         const v = C(ev.v), a = C(ev.a);
-        if (a === p && v) { this.hud.hitmarker(ev.k ? 'kill' : ev.hd ? 'head' : 'hit'); if (ev.s) this.sound.hit(!!ev.hd); }
+        if (v) v.hitT = 0.22;
+        if (a === p && v) {
+          this.hud.hitmarker(ev.k ? 'kill' : ev.hd ? 'head' : 'hit');
+          if (ev.s) { this.sound.hit(!!ev.hd); this.popDamage(v, ev.n || 0, ev.k ? 'kill' : ev.hd ? 'head' : ''); }
+        }
         if (v === p && a) {
           this.hud.damageFrom(-wrapAngle(yawTo(a.pos.x - p.pos.x, a.pos.z - p.pos.z) - p.yaw));
-          if (ev.s) { this.sound.hurt(); this.punch.pitch += 0.02; }
+          if (ev.s) { this.sound.hurt(); this.punch.pitch += 0.02; this.shake = Math.min(1, this.shake + (ev.n || 20) / 120); }
         }
         return;
       }
@@ -259,11 +295,21 @@ export const NetMixin = {
         const v = C(ev.v), k = C(ev.k);
         if (!v) return;
         this.hud.killfeed(k || null, v, ev.w, !!ev.h);
-        if (k === p && v.team !== p.team) this.sound.kill();
-        if (v === p) this.hud.message('YOU DIED', k ? `Killed by ${k.name} (${k.agent.name})` : '', 'loss', 2.5);
+        if (k === p && v.team !== p.team) {
+          this.sound.kill();
+          p.roundKills = (p.roundKills || 0) + 1;
+          this.hud.killBanner(v.name, p.roundKills);
+          this.sound.streak(p.roundKills);
+        }
+        if (v === p) {
+          this.startDeathCam(k, ev.w);
+          this.hud.message('YOU DIED', '', 'loss', 2.5);
+        }
         return;
       }
       case 'rs':
+        p.roundKills = 0;
+        this.deathCam = null;
         this.effects.clear();
         this.spectating = null;
         this.roundStartMessage(ev.swap);
@@ -272,6 +318,7 @@ export const NetMixin = {
       case 'end': this.roundEndMessage(ev.win, ev.reason); return;
       case 'pl': this.plantMessage(ev.site); return;
       case 'boom':
+        this.shake = Math.min(1.5, this.shake + 1);
         this.effects.explosion(new THREE.Vector3(ev.p[0], 1, ev.p[2]));
         this.sound.explosion(new THREE.Vector3(...ev.p));
         return;

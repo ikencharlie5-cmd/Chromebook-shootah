@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031053739';
-import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031053739';
-import { recoilOffset } from './weapons.js?v=20261031053739';
+import * as THREE from '../lib/three.module.min.js?v=20261031055224';
+import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031055224';
+import { recoilOffset } from './weapons.js?v=20261031055224';
 
 export const DIFFICULTY = {
   easy:   { react: [0.5, 0.85], aimErr: 0.13, errDecay: 2.2, turn: 4.5, headChance: 0.1, fov: 0.9, comp: 0.3 },
@@ -408,7 +408,7 @@ export class BotBrain {
       const rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw);
       c.wx = rx * ai.strafeDir; c.wz = rz * ai.strafeDir;
     }
-    if (g.skill === DIFFICULTY.hard && dist > 20 && firingWindow) c.crouching = Math.random() < 0.4;
+    if (g.skill.turn >= 10 && dist > 20 && firingWindow) c.crouching = Math.random() < 0.4;
   }
 
   // ---- abilities -----------------------------------------------------------

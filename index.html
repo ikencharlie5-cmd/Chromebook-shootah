@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chromebook Shootah</title>
-  <link rel="stylesheet" href="css/style.css?v=20261031053739">
+  <link rel="stylesheet" href="css/style.css?v=20261031055224">
 </head>
 <body>
   <div id="game"></div>
@@ -32,6 +32,10 @@
     <div id="hitmarker"></div>
     <div id="dmgIndicator"><div class="arc"></div></div>
     <div id="redFlash"></div>
+    <div id="lowHp"></div>
+    <div id="dmgNumbers"></div>
+    <div id="killBanner"><div class="kb-icon">✖</div><div class="kb-text"><div class="kb-title" id="kbTitle">ELIMINATED</div><div class="kb-name" id="kbName"></div></div></div>
+    <div id="deathCam"></div>
     <div id="smokeOverlay"></div>
     <div id="odTint"></div>
     <div id="flashOverlay"></div>
@@ -86,10 +90,11 @@
         <button class="tab" id="settingsBtn">SETTINGS</button>
         <button class="tab" id="controlsBtn">CONTROLS</button>
       </div>
+      <div id="lobbyRank"></div>
       <div class="lobby-coins coin-count">¤ 0</div>
     </div>
 
-    <div class="name-tag" id="tag0"><b id="tagName">YOU</b><span id="tagAgent"></span></div>
+    <div class="name-tag" id="tag0"><div id="tagRank"></div><b id="tagName">YOU</b><span id="tagAgent"></span></div>
     <div class="name-tag invite" id="tag1">+ INVITE</div>
     <div class="name-tag invite" id="tag2">+ INVITE</div>
     <div id="partyMore"></div>
@@ -112,7 +117,8 @@
         <div id="partyStatus"></div>
       </div>
       <div class="mode-card">
-        <div class="mode-title">CORE RUSH</div>
+        <div class="queue-toggle" id="queueToggle"><button data-q="unrated" class="on">UNRATED</button><button data-q="ranked">RANKED</button><button data-q="practice">PRACTICE</button></div>
+        <div class="mode-title" id="modeTitle">CORE RUSH</div>
         <div class="mode-sub" id="modeSub">3v3 · bots · random map · first to 7</div>
       </div>
       <button id="agentBtn" class="lobby-small">CHANGE AGENT</button>
@@ -214,6 +220,11 @@
       <h1 id="matchResult">VICTORY</h1>
       <p id="matchScore"></p>
       <p id="matchCoins"></p>
+      <div id="matchRank" class="hidden">
+        <div id="mrBadge"></div>
+        <div class="mr-bar"><div id="mrFill"></div></div>
+        <div id="mrDelta"></div>
+      </div>
       <div id="matchStats"></div>
       <button id="againBtn" class="primary">PLAY AGAIN</button>
       <button id="menuBtn">MAIN MENU</button>
@@ -253,6 +264,16 @@
         <option value="#4dd9ff">Cyan</option>
       </select>
     </label>
+    <label>Crosshair length <span id="chLenVal"></span>
+      <input id="setChLen" type="range" min="0" max="14" step="1">
+    </label>
+    <label>Crosshair thickness <span id="chThickVal"></span>
+      <input id="setChThick" type="range" min="1" max="5" step="1">
+    </label>
+    <label>Crosshair gap <span id="chGapVal"></span>
+      <input id="setChGap" type="range" min="0" max="10" step="1">
+    </label>
+    <label class="check"><input id="setChDot" type="checkbox"> Center dot</label>
     <label class="check"><input id="setFullscreen" type="checkbox"> Fullscreen when playing</label>
     <label class="check"><input id="setFps" type="checkbox"> Show FPS</label>
   </div>
@@ -266,7 +287,7 @@
   </div>
   <script src="lib/peerjs.min.js"></script>
   <script>
-    window.GAME_VERSION = '20261031053739';
+    window.GAME_VERSION = '20261031055224';
     // If a script fails (often a stale cache after an update), show a clear message instead of a blank screen.
     function showLoadError(msg) {
       document.getElementById('loadError').classList.remove('hidden');
@@ -276,6 +297,6 @@
     window.addEventListener('unhandledrejection', (e) => { if (!window.__game) showLoadError(String(e.reason)); });
     setTimeout(() => { if (!window.__game) showLoadError('Game did not finish loading.'); }, 15000);
   </script>
-  <script type="module" src="js/main.js?v=20261031053739" onerror="showLoadError('A game file failed to load.')"></script>
+  <script type="module" src="js/main.js?v=20261031055224" onerror="showLoadError('A game file failed to load.')"></script>
 </body>
 </html>

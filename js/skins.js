@@ -49,6 +49,9 @@ export function loadProfile() {
   let p;
   try { p = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch { p = null; }
   if (!p) p = { coins: 500, owned: [], equipped: {} };
+  if (!Number.isFinite(p.coins)) p.coins = 500;
+  p.rr = Number.isFinite(p.rr) ? p.rr : 0;
+  p.ranked = p.ranked || { played: 0, wins: 0, peak: 0 };
   p.owned = p.owned || [];
   p.equipped = p.equipped || {};
   return p;

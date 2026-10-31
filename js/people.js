@@ -1,4 +1,4 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031053739';
+import * as THREE from '../lib/three.module.min.js?v=20261031055224';
 
 // Chunky cartoon people: big heads with faces, hair, outfits. Each body part group is merged
 // into one cel-shaded mesh (+ an outline shell) to keep draw calls low.
@@ -405,7 +405,7 @@ export function animateCharacter(m, s, dt) {
 
   // torso: counter-twist, lean into motion, sway
   const lean = cr * 0.22 + run * 0.14 * m.dirF + m.land * 0.15 - m.air * 0.05;
-  m.torso.rotation.x = lerpTo(m.torso.rotation.x, lean, k);
+  m.torso.rotation.x = lerpTo(m.torso.rotation.x, lean - (s.hit || 0) * 0.35, Math.max(k, (s.hit || 0) * 0.8));
   m.torso.rotation.y = lerpTo(m.torso.rotation.y, -twist * 0.85, k);
   m.torso.rotation.z = lerpTo(m.torso.rotation.z, -m.dirS * 0.07 * m.move - Math.sin(q) * 0.025 * m.move, k);
   m.torso.position.y = 0.99 + breathe;

@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031053739';
-import { fmtTime } from './util.js?v=20261031053739';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031053739';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031055224';
+import { fmtTime } from './util.js?v=20261031055224';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031055224';
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,7 +12,7 @@ export class Hud {
       'minimap', 'killfeed', 'crosshair', 'hitmarker', 'dmgIndicator', 'redFlash', 'scope', 'centerMsg', 'subMsg',
       'progressWrap', 'progressLabel', 'progressFill', 'hint', 'spectate', 'armorVal', 'healthVal', 'credits',
       'coreTag', 'weaponName', 'ammoMag', 'ammoReserve', 'slots', 'scoreboard', 'buyMenu', 'buyItems', 'buyCredits',
-      'sideTag', 'fps', 'abilityBar', 'flashOverlay', 'odTint', 'smokeOverlay', 'buyAbilities', 'agentTag']) {
+      'sideTag', 'fps', 'lowHp', 'dmgNumbers', 'killBanner', 'kbTitle', 'kbName', 'deathCam', 'abilityBar', 'flashOverlay', 'odTint', 'smokeOverlay', 'buyAbilities', 'agentTag']) {
       this.el[id] = $(id);
     }
     this.ch = {
@@ -104,17 +104,31 @@ export class Hud {
 
   setCrossColor(c) { document.documentElement.style.setProperty('--cross', c); }
 
+  setCrosshairStyle(len, thick, gap, dot, lines = true) {
+    this.chLen = len; this.chGap = gap;
+    const st = this.el.crosshair.style;
+    st.setProperty('--chL', `${len}px`); st.setProperty('--chT', `${thick}px`);
+    this.el.crosshair.classList.toggle('nodot', !dot);
+    this.el.crosshair.classList.toggle('noline', !lines);
+    this.cache.gap = null;
+  }
+
   // ---- per frame ----
 
   update(dt) {
     const g = this.game, p = g.player;
     this.set('sa', this.el.scoreAlly, String(g.score[g.playerTeam]));
     this.set('se', this.el.scoreEnemy, String(g.score[1 - g.playerTeam]));
-    this.set('rl', this.el.roundLabel, `ROUND ${g.round}`);
+    if (!g.practice) this.set('rl', this.el.roundLabel, `ROUND ${g.round}`);
 
     let timer;
     const planted = g.core.state === 'planted';
+    if (g.practice) {
+      this.set('rt', this.el.roundTimer, '∞');
+      this.set('rl', this.el.roundLabel, 'PRACTICE');
+    }
     if (planted) timer = fmtTime(g.core.timer);
+    else if (g.practice) timer = '∞';
     else if (g.phase === 'buy') timer = fmtTime(g.phaseT);
     else if (g.phase === 'live') timer = fmtTime(g.phaseT);
     else timer = '0:00';
@@ -122,8 +136,8 @@ export class Hud {
     this.set('rtc', this.el.roundTimer, planted ? 'planted' : '', 'className');
 
     const side = g.sideOf(g.playerTeam);
-    this.set('side', this.el.sideTag, side === 'ATK' ? 'ATTACKING' : 'DEFENDING');
-    this.el.sideTag.style.color = side === 'ATK' ? '#ff9f6b' : '#7fc8ff';
+    if (!g.practice) { this.el.sideTag.classList.remove('practice'); this.set('side', this.el.sideTag, side === 'ATK' ? 'ATTACKING' : 'DEFENDING'); }
+    if (!g.practice) this.el.sideTag.style.color = side === 'ATK' ? '#ff9f6b' : '#7fc8ff';
 
     this.aliveRow('aa', this.el.aliveAlly, g.combatants.filter((c) => c.team === g.playerTeam));
     this.aliveRow('ae', this.el.aliveEnemy, g.combatants.filter((c) => c.team !== g.playerTeam));
@@ -184,16 +198,53 @@ export class Hud {
     el.innerHTML = list.map((c) => `<div class="pip ${c.alive ? 'on' : ''} ${c.isPlayer ? 'me' : ''}"></div>`).join('');
   }
 
+  // floating damage number at a screen position
+  damageNumber(x, y, amount, kind) {
+    const n = document.createElement('div');
+    n.className = 'dn ' + kind;
+    n.textContent = Math.round(amount);
+    n.style.left = `${x + (Math.random() - 0.5) * 30}px`;
+    n.style.top = `${y}px`;
+    this.el.dmgNumbers.appendChild(n);
+    n.animate([{ transform: 'translate(-50%,-50%) scale(1.4)', opacity: 1 }, { transform: 'translate(-50%,-160%) scale(1)', opacity: 1, offset: 0.3 }, { transform: 'translate(-50%,-260%) scale(0.9)', opacity: 0 }],
+      { duration: 900, easing: 'ease-out' }).onfinish = () => n.remove();
+    while (this.el.dmgNumbers.children.length > 14) this.el.dmgNumbers.firstChild.remove();
+  }
+
+  killBanner(name, streak) {
+    const titles = ['ELIMINATED', 'DOUBLE KILL', 'TRIPLE KILL', 'TEAM WIPE'];
+    this.el.kbTitle.textContent = titles[Math.min(streak - 1, titles.length - 1)];
+    this.el.kbName.textContent = name.toUpperCase();
+    this.el.killBanner.classList.toggle('streak', streak > 1);
+    this.el.killBanner.classList.add('on');
+    clearTimeout(this.kbTimer);
+    this.kbTimer = setTimeout(() => this.el.killBanner.classList.remove('on'), 1800);
+  }
+
+  lowHealth(amount) {
+    if (Math.abs((this.cache.lowHp ?? -1) - amount) < 0.02) return;
+    this.cache.lowHp = amount;
+    this.el.lowHp.style.opacity = amount;
+  }
+
+  deathCam(text) { this.set('dc', this.el.deathCam, text || ''); }
+
   crosshair(gap, visible) {
     this.el.crosshair.style.display = visible ? 'block' : 'none';
     if (!visible) return;
-    const g = Math.round(Math.min(gap, 80));
+    const g = Math.round(Math.min(gap + (this.chGap ?? 3) - 3, 80));
     if (this.cache.gap === g) return;
     this.cache.gap = g;
-    this.ch.top.style.top = `${-g - 7}px`;
+    const L = this.chLen ?? 7;
+    this.ch.top.style.top = `${-g - L}px`;
     this.ch.bottom.style.top = `${g}px`;
-    this.ch.left.style.left = `${-g - 7}px`;
+    this.ch.left.style.left = `${-g - L}px`;
     this.ch.right.style.left = `${g}px`;
+  }
+
+  practiceStats(text) {
+    this.el.sideTag.classList.add('practice');
+    this.set('side', this.el.sideTag, text);
   }
 
   scope(on) { this.el.scope.classList.toggle('on', on); }

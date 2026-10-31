@@ -1,10 +1,22 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031053739';
+import * as THREE from '../lib/three.module.min.js?v=20261031055224';
 
 // Pooled visual effects: tracers, bullet holes, particles, explosions.
 export class Effects {
   constructor(scene) {
     this.scene = scene;
 
+    // tracers: a bright stretched streak that flies from the muzzle to the hit point
+    this.streaks = [];
+    const streakGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 5, 1, true);
+    streakGeo.rotateX(Math.PI / 2);
+    for (let i = 0; i < 24; i++) {
+      const m = new THREE.Mesh(streakGeo, new THREE.MeshBasicMaterial({ color: 0xffe6a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+      m.visible = false;
+      m.frustumCulled = false;
+      scene.add(m);
+      this.streaks.push({ mesh: m, from: new THREE.Vector3(), to: new THREE.Vector3(), t: 0, dur: 0 });
+    }
+    this.streakIdx = 0;
     this.tracers = [];
     for (let i = 0; i < 24; i++) {
       const geo = new THREE.BufferGeometry();
@@ -35,6 +47,8 @@ export class Effects {
     this.pMats = {
       blood: new THREE.MeshBasicMaterial({ color: 0xb3122a }),
       spark: new THREE.MeshBasicMaterial({ color: 0xffd27a }),
+      brass: new THREE.MeshBasicMaterial({ color: 0xd8a23a }),
+      smoke: new THREE.MeshBasicMaterial({ color: 0xc8c8c8, transparent: true, opacity: 0.5, depthWrite: false }),
       dust: new THREE.MeshBasicMaterial({ color: 0x9a8f80 }),
       heal: new THREE.MeshBasicMaterial({ color: 0x5dffb0 }),
     };
@@ -58,6 +72,11 @@ export class Effects {
   }
 
   tracer(from, to) {
+    const st = this.streaks[this.streakIdx];
+    this.streakIdx = (this.streakIdx + 1) % this.streaks.length;
+    st.from.copy(from); st.to.copy(to);
+    st.t = 0; st.dur = Math.max(0.04, from.distanceTo(to) / 320);
+    st.mesh.visible = true;
     const t = this.tracers[this.tracerIdx];
     this.tracerIdx = (this.tracerIdx + 1) % this.tracers.length;
     const a = t.line.geometry.attributes.position;
@@ -69,7 +88,7 @@ export class Effects {
     t.line.geometry.computeBoundingSphere();
     t.line.visible = true;
     t.life = 0.07;
-    t.line.material.opacity = 0.8;
+    t.line.material.opacity = 0.35;
   }
 
   impact(point, normal) {
@@ -92,6 +111,7 @@ export class Effects {
       const p = this.particles[this.pIdx];
       this.pIdx = (this.pIdx + 1) % this.particles.length;
       p.mesh.material = this.pMats[kind];
+      p.mesh.scale.set(1, 1, 1); p.spin = 0; p.floaty = false;
       p.mesh.position.copy(point);
       p.mesh.visible = true;
       p.vel.set(
@@ -100,6 +120,35 @@ export class Effects {
         dir.z * speed * 0.5 + (Math.random() - 0.5) * speed,
       );
       p.life = 0.35 + Math.random() * 0.3;
+    }
+  }
+
+  // ejected shell casing (spins and bounces)
+  casing(pos, vel) {
+    const p = this.particles[this.pIdx];
+    this.pIdx = (this.pIdx + 1) % this.particles.length;
+    p.mesh.material = this.pMats.brass;
+    p.mesh.position.copy(pos);
+    p.mesh.scale.set(0.35, 0.35, 0.8);
+    p.mesh.visible = true;
+    p.vel.copy(vel);
+    p.spin = 15;
+    p.life = 0.9;
+  }
+
+  // dust puff when landing or sliding
+  dust(pos, n = 6) {
+    for (let i = 0; i < n; i++) {
+      const p = this.particles[this.pIdx];
+      this.pIdx = (this.pIdx + 1) % this.particles.length;
+      p.mesh.material = this.pMats.smoke;
+      p.mesh.position.set(pos.x + (Math.random() - 0.5) * 0.4, pos.y + 0.05, pos.z + (Math.random() - 0.5) * 0.4);
+      p.mesh.scale.setScalar(2.2);
+      p.mesh.visible = true;
+      const a = Math.random() * Math.PI * 2;
+      p.vel.set(Math.cos(a) * 1.5, 0.6, Math.sin(a) * 1.5);
+      p.life = 0.45;
+      p.floaty = true;
     }
   }
 
@@ -122,6 +171,18 @@ export class Effects {
   }
 
   update(dt) {
+    for (const st of this.streaks) {
+      if (!st.mesh.visible) continue;
+      st.t += dt;
+      const k0 = Math.min(1, st.t / st.dur), k1 = Math.max(0, k0 - 0.35);
+      const a = st.from.clone().lerp(st.to, k1), b = st.from.clone().lerp(st.to, k0);
+      const len = a.distanceTo(b);
+      st.mesh.position.copy(a).add(b).multiplyScalar(0.5);
+      st.mesh.lookAt(b);
+      st.mesh.scale.set(1, 1, Math.max(0.01, len));
+      st.mesh.material.opacity = 0.9;
+      if (st.t > st.dur + 0.03) st.mesh.visible = false;
+    }
     for (const t of this.tracers) {
       if (t.life <= 0) continue;
       t.life -= dt;
@@ -131,10 +192,16 @@ export class Effects {
     for (const p of this.particles) {
       if (p.life <= 0) continue;
       p.life -= dt;
-      p.vel.y -= 12 * dt;
+      if (p.floaty) { p.vel.multiplyScalar(1 - dt * 4); p.mesh.scale.multiplyScalar(1 + dt * 2); }
+      else p.vel.y -= 12 * dt;
       p.mesh.position.addScaledVector(p.vel, dt);
-      if (p.mesh.position.y < 0.02) { p.mesh.position.y = 0.02; p.vel.set(0, 0, 0); }
-      if (p.life <= 0) p.mesh.visible = false;
+      if (p.spin) { p.mesh.rotation.x += p.spin * dt; p.mesh.rotation.z += p.spin * 0.7 * dt; }
+      if (p.mesh.position.y < 0.02) {
+        p.mesh.position.y = 0.02;
+        if (p.spin && p.vel.y < -1) { p.vel.y *= -0.35; p.vel.x *= 0.5; p.vel.z *= 0.5; p.spin *= 0.5; }
+        else p.vel.set(0, 0, 0);
+      }
+      if (p.life <= 0) { p.mesh.visible = false; p.mesh.scale.set(1, 1, 1); p.spin = 0; p.floaty = false; }
     }
     for (let i = this.flashes.length - 1; i >= 0; i--) {
       const f = this.flashes[i];
