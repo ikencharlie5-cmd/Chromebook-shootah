@@ -7,6 +7,9 @@ const SHOTS = {
   smg: { freq: 2800, q: 0.9, decay: 0.08, thump: 150, gain: 0.45 },
   rifle: { freq: 1900, q: 0.7, decay: 0.16, thump: 110, gain: 0.65 },
   sniper: { freq: 1100, q: 0.6, decay: 0.45, thump: 70, gain: 1.0 },
+  shotgun: { freq: 1250, q: 0.5, decay: 0.32, thump: 75, gain: 1.0 },
+  lmg: { freq: 1700, q: 0.7, decay: 0.15, thump: 95, gain: 0.72 },
+  dmr: { freq: 1450, q: 0.6, decay: 0.3, thump: 85, gain: 0.85 },
 };
 
 export class Sound {

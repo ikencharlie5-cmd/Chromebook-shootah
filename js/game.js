@@ -4,13 +4,14 @@ import { randomMapDef, MAP_DEFS } from './maps.js';
 import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js';
 import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js';
 import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter } from './models.js';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js';
 import { BotBrain, DIFFICULTY } from './bots.js';
 import { Abilities } from './abilities.js';
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { Hud } from './hud.js';
 import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -151,6 +152,13 @@ export class Game {
       this.combatants.push(c);
     }
     this.viewmodel.setAgent(playerAgent);
+    this.player.skins = this.playerSkins();
+    this.viewmodel.setSkins(this.player.skins);
+    for (const c of this.combatants) {
+      if (c.isPlayer) continue;
+      c.skins = {};
+      for (const w of LOCKER_WEAPONS) c.skins[w] = randomBotSkin(w);
+    }
     this.score = [0, 0];
     this.lossStreak = [0, 0];
     this.round = 0;
@@ -164,6 +172,13 @@ export class Game {
   }
 
   sideOf(team) { return team === this.attackTeam ? 'ATK' : 'DEF'; }
+
+  playerSkins() {
+    const out = {};
+    if (!this.profile) return out;
+    for (const w of LOCKER_WEAPONS) { const e = equippedFor(this.profile, w); out[w] = { skin: e.skin, model: e.model }; }
+    return out;
+  }
 
   startRound() {
     this.round++;
@@ -271,14 +286,19 @@ export class Game {
       else if (r < 0.7) buy('bolt');
       abilities();
     } else if (!c.inv.primary) {
-      const cr = c.credits;
-      if (cr >= 5500 && Math.random() < 0.2) { buy('lynx'); armor('heavy'); }
-      else if (cr >= 3900) { buy('talon'); armor('heavy'); }
-      else if (cr >= 3300) { buy('talon'); armor('light'); }
-      else if (cr >= 2900 && Math.random() < 0.6) buy('talon');
-      else if (cr >= 2000) { buy('wasp'); armor('light'); }
-      else if (cr >= 1600 && Math.random() < 0.5) buy('wasp');
-      else if (cr >= 800 && Math.random() < 0.4) buy('bolt');
+      const cr = c.credits, r = Math.random();
+      const rifle = () => (Math.random() < 0.5 ? 'talon' : 'raptor');
+      if (cr >= 5500 && r < 0.15) { buy('lynx'); armor('heavy'); }
+      else if (cr >= 4200 && r < 0.25) { buy('bastion'); armor('heavy'); }
+      else if (cr >= 3900) { buy(rifle()); armor('heavy'); }
+      else if (cr >= 3400 && r < 0.3) { buy('arbiter'); armor('heavy'); }
+      else if (cr >= 3300) { buy(rifle()); armor('light'); }
+      else if (cr >= 2900 && r < 0.6) buy(rifle());
+      else if (cr >= 2200 && r < 0.35) { buy('thunder'); armor('light'); }
+      else if (cr >= 2000) { buy(r < 0.5 ? 'wasp' : 'hornet'); armor('light'); }
+      else if (cr >= 1600 && r < 0.4) buy(r < 0.2 ? 'needle' : 'wasp');
+      else if (cr >= 1400 && r < 0.5) buy('hornet');
+      else if (cr >= 800 && r < 0.4) buy('bolt');
       abilities();
     } else {
       if (c.credits >= 1000) armor('heavy');
@@ -506,12 +526,15 @@ export class Game {
     } else p.scoped = false;
 
     const trigger = inp.mouse[0] && !menuBlock && !p.action;
-    if (trigger && this.phase !== 'buy') {
+    if (w.def.burst && trigger && !p.triggerHeld) p.burstQueue = w.def.burst - (w.burstShot || 0);
+    if (w.def.burst && !trigger && p.burstQueue > 0 && this.phase !== 'buy' && w.mag > 0) {
+      if (this.tryShoot(p)) p.burstQueue--;
+    } else if (trigger && this.phase !== 'buy') {
       if (w.def.auto || !p.triggerHeld) {
         if (!w.def.melee && w.mag <= 0 && w.reloadT <= 0) {
           if (!p.triggerHeld) this.sound.click();
           this.startReload(p);
-        } else this.tryShoot(p);
+        } else if (this.tryShoot(p) && p.burstQueue > 0) p.burstQueue--;
       }
     }
     p.triggerHeld = trigger;
@@ -612,11 +635,12 @@ export class Game {
     w.mag--;
     const rec = recoilOffset(d, w.spray);
     w.spray += 1;
+    if (d.burst) {
+      // 3-round burst: after the last round of a burst there's a longer pause
+      w.burstShot = (w.burstShot || 0) + 1;
+      if (w.burstShot >= d.burst) { w.burstShot = 0; w.cool = d.burstGap; }
+    }
     const spread = this.spreadFor(c) + (c.blind > 0 ? 0.08 : 0);
-    const a = Math.random() * Math.PI * 2, r = spread * Math.random();
-    dirFromAngles(c.yaw + rec.yaw + Math.cos(a) * r, c.pitch + rec.pitch + Math.sin(a) * r, _d);
-
-    const hit = this.trace(c, _o, _d, 200);
 
     let muzzle;
     if (c.isPlayer) {
@@ -624,7 +648,7 @@ export class Game {
       const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
       muzzle.x += cy * 0.18 - sy * 0.6; muzzle.z += -sy * 0.18 - cy * 0.6; muzzle.y -= 0.14;
       this.effects.muzzleFlash(this.viewmodel.flash);
-      this.viewmodel.kick(d.kind === 'sniper' ? 3 : d.kind === 'rifle' ? 1.2 : 1);
+      this.viewmodel.kick({ sniper: 3, shotgun: 2.6, rifle: 1.2, lmg: 1.1 }[d.kind] || 1);
       this.punch.pitch += d.vKick * 0.5 + 0.004;
       this.punch.yaw += (Math.random() - 0.5) * d.hKick * 0.5;
       if (d.scope) c.scoped = false;
@@ -634,17 +658,31 @@ export class Game {
       if (c.model?.flash) this.effects.muzzleFlash(c.model.flash);
       this.sound.shot(d.sound, c.pos);
     }
-    if (Math.random() < 0.7 || c.isPlayer) this.effects.tracer(muzzle, hit.point);
+    muzzle = muzzle.clone();
 
-    if (hit.entity) {
-      let dmg = d.dmg[hit.part];
-      if (d.falloff && hit.t > d.falloff[0]) dmg *= d.falloff[1];
-      this.effects.blood(hit.point, _d);
-      this.applyDamage(hit.entity, c, dmg, hit.part, d.name, _d);
-    } else if (hit.t < 200) {
-      this.effects.impact(hit.point, hit.normal);
-      if (hit.box?.kind === 'ability') this.abilities.damageWall(hit.box, d.dmg.body);
+    // one trace per pellet (shotguns fire many); damage is summed per victim
+    const pellets = d.pellets || 1;
+    const hits = new Map();
+    for (let k = 0; k < pellets; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = pellets > 1 ? spread * Math.sqrt(Math.random()) : spread * Math.random();
+      dirFromAngles(c.yaw + rec.yaw + Math.cos(a) * r, c.pitch + rec.pitch + Math.sin(a) * r, _d);
+      const hit = this.trace(c, _o, _d, 200);
+      if (k < 3 && (Math.random() < 0.7 || c.isPlayer)) this.effects.tracer(muzzle, hit.point);
+      if (hit.entity) {
+        let dmg = d.dmg[hit.part];
+        if (d.pellets) dmg *= clamp(1 - (hit.t - d.closeRange) / (d.farRange - d.closeRange) * 0.85, 0.15, 1);
+        else if (d.falloff && hit.t > d.falloff[0]) dmg *= d.falloff[1];
+        this.effects.blood(hit.point, _d);
+        const h = hits.get(hit.entity) || { dmg: 0, head: false, dir: _d.clone() };
+        h.dmg += dmg; h.head = h.head || hit.part === 'head';
+        hits.set(hit.entity, h);
+      } else if (hit.t < 200) {
+        this.effects.impact(hit.point, hit.normal);
+        if (hit.box?.kind === 'ability') this.abilities.damageWall(hit.box, d.dmg.body);
+      }
     }
+    for (const [victim, h] of hits) this.applyDamage(victim, c, h.dmg, h.head ? 'head' : 'body', d.name, h.dir);
 
     for (const o of this.combatants) {
       if (o.isPlayer || !o.alive || o.team === c.team) continue;
@@ -937,7 +975,7 @@ export class Game {
       }
       m.root.position.copy(c.pos);
       m.root.rotation.y = c.yaw;
-      setCharacterGun(m, c.weapon.def.id);
+      setCharacterGun(m, c.weapon.def.id, c.skins);
       animateCharacter(m, {
         speed: Math.hypot(c.vel.x, c.vel.z), vx: c.vel.x, vz: c.vel.z, yaw: c.yaw,
         crouch: c.crouch, pitch: c.pitch, walking: c.walking,
@@ -1068,6 +1106,33 @@ export class Game {
     cv.width = Math.round(w * pr); cv.height = Math.round(h * pr);
     const src = r.domElement;
     cv.getContext('2d').drawImage(src, 0, src.height - cv.height, cv.width, cv.height, 0, 0, cv.width, cv.height);
+  }
+
+  // Renders a weapon (with skin) into a 2D canvas for the Locker.
+  renderGunPreview(id, skin, model, cv, w = 420, h = 240, angle = 0.35) {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x161b24);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.5));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 3, 2); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9ac8ff, 1.2); rim.position.set(-2, 1, -2); scene.add(rim);
+    const { group } = buildGun(id, skin, model);
+    group.rotation.y = -Math.PI / 2 + angle;
+    scene.add(group);
+    const box = new THREE.Box3().setFromObject(group), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+    const cam = new THREE.PerspectiveCamera(28, w / h, 0.01, 50);
+    const dist = Math.max(size.x / (w / h), size.y, size.z / (w / h)) * 2.3 + 0.08;
+    cam.position.set(c.x + 0.05, c.y + 0.08, c.z + dist);
+    cam.lookAt(c);
+    const r = this.renderer, pr = r.getPixelRatio();
+    r.setScissorTest(true);
+    r.setViewport(0, 0, w, h); r.setScissor(0, 0, w, h);
+    r.clear(); r.render(scene, cam);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, window.innerWidth, window.innerHeight);
+    cv.width = Math.round(w * pr); cv.height = Math.round(h * pr);
+    const src = r.domElement;
+    cv.getContext('2d').drawImage(src, 0, src.height - cv.height, cv.width, cv.height, 0, 0, cv.width, cv.height);
+    group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
   }
 
   // Slow orbit over the map behind the menus.

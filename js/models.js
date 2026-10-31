@@ -61,10 +61,11 @@ export function buildFlash() {
 
 export { buildCharacter } from './people.js';
 
-export function setCharacterGun(model, id) {
+export function setCharacterGun(model, id, skins = null) {
   if (model.gunId === id) return;
   if (model.gun) model.gunHolder.remove(model.gun);
-  const { group, muzzle } = buildGun(id);
+  const sk = skins?.[id] || {};
+  const { group, muzzle } = buildGun(id, sk.skin || 'factory', sk.model || 'combat');
   group.scale.setScalar(1.1);
   model.gunHolder.add(group);
   model.gun = group; model.muzzle = muzzle; model.gunId = id;

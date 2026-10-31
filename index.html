@@ -73,7 +73,7 @@
     </div>
     <h3 class="buy-sub">WEAPONS &amp; SHIELDS</h3>
     <div id="buyItems"></div>
-    <h3 class="buy-sub">ABILITIES <span>(E is free every round)</span></h3>
+    <h3 class="buy-sub">ABILITIES <span>(E is free every round · press Q / F to buy)</span></h3>
     <div id="buyAbilities"></div>
   </div>
 
@@ -82,6 +82,7 @@
       <h1>CHROMEBOOK<br><span>SHOOTAH</span></h1>
       <p class="tag">3v3 tactical shooter · 6 agents · 5 maps</p>
       <button id="playBtn" class="primary">PLAY</button>
+      <button id="lockerBtn">LOCKER · <span class="coin-count">¤ 0</span></button>
       <div id="settingsSlot"></div>
       <div class="controls">
         <h3>Controls</h3>
@@ -119,6 +120,39 @@
     </div>
   </div>
 
+  <div id="locker" class="overlay hidden">
+    <div class="locker-wrap">
+      <div class="locker-head">
+        <h2>LOCKER</h2>
+        <div class="coins coin-count">¤ 0</div>
+        <button id="rollBtn" class="primary">ROLL · ¤ 100</button>
+        <button id="lockerBack">BACK</button>
+      </div>
+      <div id="lockerOdds"></div>
+      <div class="locker-body">
+        <div id="lockerWeapons"></div>
+        <div class="locker-main">
+          <div class="locker-preview"><canvas id="lockerCanvas"></canvas><div id="lockerTitle"></div></div>
+          <div id="lockerSkins"></div>
+        </div>
+      </div>
+      <p class="tag">Earn coins by playing: +50 per match, +10 per kill, +100 for a win. Duplicates refund ¤ 30.</p>
+    </div>
+  </div>
+
+  <div id="rollOverlay" class="overlay hidden">
+    <div class="roll-wrap">
+      <div id="reelWindow"><div id="reel"></div><div class="reel-marker"></div></div>
+      <div id="rollResult" class="hidden">
+        <div id="rollRarity"></div>
+        <canvas id="rollCanvas"></canvas>
+        <div id="rollName"></div>
+        <div id="rollNote"></div>
+        <div class="roll-buttons"><button id="rollEquip" class="primary">EQUIP</button><button id="rollClose">CLOSE</button></div>
+      </div>
+    </div>
+  </div>
+
   <div id="pauseMenu" class="overlay hidden">
     <div class="panel">
       <h2>PAUSED</h2>
@@ -132,6 +166,7 @@
     <div class="panel">
       <h1 id="matchResult">VICTORY</h1>
       <p id="matchScore"></p>
+      <p id="matchCoins"></p>
       <div id="matchStats"></div>
       <button id="againBtn" class="primary">PLAY AGAIN</button>
       <button id="menuBtn">MAIN MENU</button>

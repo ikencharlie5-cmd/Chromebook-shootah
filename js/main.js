@@ -1,6 +1,7 @@
 import { Game } from './game.js';
 import { Sound } from './audio.js';
 import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js';
+import { Locker } from './locker.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -38,6 +39,8 @@ const input = new Input();
 const sound = new Sound();
 const game = new Game($('game'), settings, sound, input);
 const canvas = game.canvas;
+const locker = new Locker(game, sound);
+document.getElementById('lockerBtn').addEventListener('click', () => { sound.init(); locker.open(); });
 
 const locked = () => document.pointerLockElement === canvas;
 
@@ -59,7 +62,9 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyB' && !e.repeat && !game.paused) {
     if (game.buyOpen) closeBuy(); else openBuy();
   }
-  if (game.buyOpen && /^Digit[1-8]$/.test(e.code)) game.hud.buyKey(Number(e.code.slice(5)) - 1);
+  if (game.buyOpen && /^Digit[1-9]$/.test(e.code)) game.hud.buyKey(Number(e.code.slice(5)) - 1);
+  if (game.buyOpen && e.code === 'KeyQ') game.buy('ab:q');
+  if (game.buyOpen && e.code === 'KeyF') game.buy('ab:f');
   if (e.code === 'Escape' && game.buyOpen) closeBuy(false);
   // with keyboard lock (fullscreen) Escape reaches the page instead of the browser
   if (e.code === 'Escape' && locked() && navigator.keyboard?.lock) document.exitPointerLock();
@@ -262,6 +267,9 @@ game.onMatchEnd = (won, mine, theirs, player) => {
   r.className = won ? 'win' : 'loss';
   $('matchScore').textContent = `${mine} — ${theirs}`;
   $('matchStats').textContent = `Your stats: ${player.kills} kills · ${player.deaths} deaths`;
+  const earned = 50 + player.kills * 10 + (won ? 100 : 0);
+  locker.addCoins(earned);
+  $('matchCoins').textContent = `+ ¤ ${earned} coins — spend them in the Locker`;
   $('matchEnd').classList.remove('hidden');
 };
 

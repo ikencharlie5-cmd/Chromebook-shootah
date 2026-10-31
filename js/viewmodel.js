@@ -22,8 +22,9 @@ const _up = new THREE.Vector3(0, 1, 0);
 
 function seg(parent, a, b, r0, r1, material) {
   const dir = new THREE.Vector3().subVectors(b, a);
-  const len = dir.length();
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 12), material);
+  const len = Math.max(0.001, dir.length());
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 10), material);
+  m.add(new THREE.Mesh(m.geometry, OUTLINE));
   m.position.copy(a).addScaledVector(dir, 0.5);
   m.quaternion.setFromUnitVectors(_up, dir.normalize());
   parent.add(m);
@@ -45,8 +46,8 @@ function forearm(parent, wrist, elbow, m) {
   g.position.copy(wrist);
   g.quaternion.setFromUnitVectors(_up, dir.normalize());
   parent.add(g);
-  const wristBit = inked(g, new THREE.CapsuleGeometry(0.03, 0.08, 4, 10), m.skin);
-  wristBit.position.y = 0.04;
+  const wristBit = inked(g, new THREE.CapsuleGeometry(0.026, 0.02, 4, 10), m.skin);
+  wristBit.position.y = 0.012;
   if (m.bare) {
     const arm = inked(g, new THREE.CylinderGeometry(0.046, 0.034, len, 14), m.skin);
     arm.position.y = len / 2;
@@ -57,10 +58,10 @@ function forearm(parent, wrist, elbow, m) {
     tat.rotation.x = 0.1;
     g.add(tat);
   } else {
-    const sleeve = inked(g, new THREE.CylinderGeometry(0.058, 0.046, len - 0.07, 14), m.sleeve);
-    sleeve.position.y = 0.07 + (len - 0.07) / 2;
-    const cuff = inked(g, new THREE.CylinderGeometry(0.05, 0.05, 0.045, 14), m.cuff);
-    cuff.position.y = 0.085;
+    const sleeve = inked(g, new THREE.CylinderGeometry(0.056, 0.042, len - 0.035, 14), m.sleeve);
+    sleeve.position.y = 0.035 + (len - 0.035) / 2;
+    const cuff = inked(g, new THREE.CylinderGeometry(0.045, 0.045, 0.04, 14), m.cuff);
+    cuff.position.y = 0.045;
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.059, 0.059, 0.012, 14), m.accent);
     band.position.y = len * 0.55;
     g.add(band);
@@ -68,34 +69,54 @@ function forearm(parent, wrist, elbow, m) {
   return g;
 }
 
-// A chunky cartoon hand: palm plus jointed sausage fingers curled around a grip.
-// side = 1 for right hand, -1 for left. curl ~ 0 (open) .. 1.6 (fist).
-function hand(parent, m, side, curl = 1.3) {
-  const h = new THREE.Group();
-  parent.add(h);
-  inked(h, new THREE.BoxGeometry(0.085, 0.04, 0.09), m.glove);
+// A hand wrapped around a cylinder-ish handle.
+//   c: handle centre, a: handle axis (unit), u: angle-0 direction, v: angle-90 direction
+//   r: handle radius, palm: angle of the palm, f0/f1: finger wrap angles, rows: finger offsets along a
+//   thumb: [angleFrom, angleTo, along] (thumb lies on the handle surface)
+// Returns the wrist point (for the forearm).
+function grasp(parent, m, o) {
+  const at = (ang, h, rad) => o.c.clone()
+    .addScaledVector(o.u, Math.cos(ang) * rad).addScaledVector(o.v, Math.sin(ang) * rad).addScaledVector(o.a, h);
   const fingerMat = m.fingerless ? m.skin : m.glove;
-  for (let i = 0; i < 4; i++) {
-    const f = new THREE.Group();
-    f.position.set((i - 1.5) * 0.021 * side, 0, -0.045);
-    h.add(f);
-    const a = inked(f, new THREE.CapsuleGeometry(0.0115, 0.022, 3, 8), m.fingerless ? m.glove : fingerMat);
-    a.rotation.x = Math.PI / 2; a.position.z = -0.014;
-    const j = new THREE.Group();
-    j.position.set(0, 0, -0.03);
-    j.rotation.x = -curl * 0.8;
-    f.add(j);
-    const b = inked(j, new THREE.CapsuleGeometry(0.011, 0.022, 3, 8), fingerMat);
-    b.rotation.x = Math.PI / 2; b.position.z = -0.014;
-    f.rotation.x = -curl * 0.6;
+  const R = o.r + 0.013;
+  // palm block sitting against the handle
+  const radial = o.u.clone().multiplyScalar(Math.cos(o.palm)).addScaledVector(o.v, Math.sin(o.palm)).normalize();
+  const tangent = new THREE.Vector3().crossVectors(o.a, radial).normalize();
+  const pc = at(o.palm, o.palmAlong ?? 0, o.r + 0.024);
+  const palm = inked(parent, new THREE.CapsuleGeometry(0.026, 0.045, 4, 10), m.glove);
+  palm.position.copy(pc);
+  palm.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(tangent, o.a, radial));
+  palm.scale.set(1.1, 1, 0.5);
+  // fingers: three segments following the handle's curve, knuckle balls at the joints
+  o.rows.forEach((h, i) => {
+    const span = o.f1 - o.f0 - i * 0.12;
+    let prev = at(o.f0, h, R);
+    const k0 = inked(parent, new THREE.SphereGeometry(0.0135, 10, 8), m.glove);
+    k0.position.copy(prev);
+    for (let k = 1; k <= 3; k++) {
+      const p = at(o.f0 + span * k / 3, h, R - k * 0.0008);
+      seg(parent, prev, p, 0.0118, 0.0118, k === 1 && !m.fingerless ? m.glove : fingerMat);
+      const ball = inked(parent, new THREE.SphereGeometry(0.012, 8, 6), fingerMat);
+      ball.position.copy(p);
+      prev = p;
+    }
+  });
+  if (o.thumb) {
+    const [t0, t1, ta] = o.thumb;
+    const p0 = at(t0, ta, o.r + 0.016), p1 = at((t0 + t1) / 2, ta + 0.012, o.r + 0.013), p2 = at(t1, ta + 0.022, o.r + 0.012);
+    seg(parent, p0, p1, 0.014, 0.0135, fingerMat);
+    seg(parent, p1, p2, 0.0135, 0.0125, fingerMat);
+    const tip = inked(parent, new THREE.SphereGeometry(0.0125, 8, 6), fingerMat);
+    tip.position.copy(p2);
   }
-  const thumb = new THREE.Group();
-  thumb.position.set(0.045 * side, -0.004, -0.012);
-  thumb.rotation.set(-0.4, 0.75 * side, 0);
-  h.add(thumb);
-  const t = inked(thumb, new THREE.CapsuleGeometry(0.013, 0.03, 3, 8), fingerMat);
-  t.rotation.x = Math.PI / 2; t.position.z = -0.022;
-  return h;
+  if (o.index) {
+    // trigger finger: straight along the frame to the trigger
+    const [p0, p1, p2] = o.index;
+    seg(parent, p0, p1, 0.012, 0.012, fingerMat);
+    seg(parent, p1, p2, 0.0115, 0.0115, fingerMat);
+    for (const p of [p1, p2]) { const b = inked(parent, new THREE.SphereGeometry(0.0118, 8, 6), fingerMat); b.position.copy(p); }
+  }
+  return pc.clone().addScaledVector(radial, 0.02).add(o.wrist || new THREE.Vector3());
 }
 
 // First-person weapon + agent-styled arms, rendered in its own scene on top of the world.
@@ -147,11 +168,23 @@ export class ViewModel {
     this.castArm.clear();
     const m = this.mats();
     forearm(this.castArm, V(-0.01, -0.03, 0.05), V(-0.12, -0.24, 0.4), m);
-    const hd = hand(this.castArm, m, -1, 0.9);
-    hd.rotation.x = 0.2;
+    // open hand holding the ability orb
+    const palm = inked(this.castArm, new THREE.CapsuleGeometry(0.03, 0.05, 4, 10), m.glove);
+    palm.rotation.x = Math.PI / 2; palm.scale.set(1.15, 1, 0.55);
+    for (let i = 0; i < 4; i++) seg(this.castArm, V((i - 1.5) * 0.02, 0.0, -0.035), V((i - 1.5) * 0.022, 0.03, -0.065), 0.011, 0.011, m.fingerless ? m.skin : m.glove);
     this.orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.026, 1), this.orbMat);
     this.orb.position.set(0, 0.035, -0.05);
     this.castArm.add(this.orb);
+  }
+
+  // { weaponId: { skin, model } } — rebuilds weapon models on change
+  setSkins(skins) {
+    this.skins = skins;
+    for (const id in this.models) this.holder.remove(this.models[id].group);
+    this.models = {};
+    const cur = this.current?.id;
+    this.current = null;
+    if (cur) this.setWeapon(cur, 0);
   }
 
   mats() {
@@ -168,24 +201,58 @@ export class ViewModel {
   }
 
   build(id) {
-    const { group, muzzle } = buildGun(id);
+    const sk = this.skins?.[id] || {};
+    const { group, muzzle, grip } = buildGun(id, sk.skin || 'factory', sk.model || 'combat');
     const m = this.mats();
-    const pistol = id === 'pip' || id === 'bolt';
-    const knife = id === 'knife';
+    const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+    const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
-    // right hand on the grip, forearm running back toward the bottom-right of the screen
-    const rh = hand(group, m, 1, knife ? 1.5 : 1.3);
-    rh.position.set(0.005, -0.045, 0.02);
-    rh.rotation.set(0.25, 0, Math.PI / 2 - 0.25);
-    forearm(group, V(0.012, -0.075, 0.07), knife ? V(0.2, -0.36, 0.42) : pistol ? V(0.3, -0.4, 0.38) : V(0.22, -0.36, 0.42), m);
-    if (!knife) {
-      // left hand under the handguard (or cupping the pistol grip)
-      const lz = pistol ? 0.015 : -0.26;
-      const lh = hand(group, m, -1, 1.1);
-      lh.position.set(-0.03, pistol ? -0.06 : -0.035, lz);
-      lh.rotation.set(0.1, 0, pistol ? -Math.PI / 2 + 0.4 : -Math.PI / 2 + 0.15);
-      const wrist = V(-0.045, -0.075, lz + 0.05);
-      forearm(group, wrist, pistol ? V(-0.55, -0.42, 0.3) : V(-0.55, -0.38, 0.14), m);
+    if (grip.type === 'knife') {
+      // right hand around the horizontal handle, thumb along the top
+      const wr = grasp(group, m, {
+        c: V3(0, 0.033, 0.07), a: Z.clone().negate(), u: X.clone(), v: Y.clone().negate(), r: 0.019,
+        palm: -0.6, f0: 0.15, f1: 3.6, rows: [0.03, 0.009, -0.012, -0.033], thumb: [-1.9, -1.2, 0.035],
+        wrist: V3(0.02, -0.01, 0.06),
+      });
+      forearm(group, wr, V3(0.2, -0.34, 0.45), m);
+      return { group, muzzle };
+    }
+
+    // right hand on the pistol grip: palm on the backstrap, fingers round the front, thumb on the left
+    const gripAxis = V3(0, 1, -0.22).normalize();
+    const gc = grip.type === 'pistol' ? V3(0, -0.07, 0.008) : V3(0, -0.085, 0.012);
+    const fwd = V3(0, -0.22, -1).normalize();
+    const wrR = grasp(group, m, {
+      c: gc, a: gripAxis, u: X.clone(), v: fwd, r: 0.026,
+      palm: -1.25, palmAlong: -0.005, f0: 0.25, f1: 3.3, rows: [0.0, -0.022, -0.044],
+      thumb: [2.6, 1.9, 0.045], wrist: V3(0.02, -0.035, 0.05),
+      index: grip.type === 'pistol'
+        ? [V3(0.03, -0.032, 0.0), V3(0.024, -0.022, -0.03), V3(0.012, -0.018, -0.052)]
+        : [V3(0.034, -0.045, 0.0), V3(0.028, -0.035, -0.035), V3(0.014, -0.03, -0.07)],
+    });
+    forearm(group, wrR, grip.type === 'pistol' ? V3(0.3, -0.42, 0.38) : V3(0.24, -0.38, 0.44), m);
+
+    if (grip.type === 'pistol') {
+      // support hand cups the shooting hand from the left
+      const wrL = grasp(group, m, {
+        c: V3(0, -0.085, 0.005), a: gripAxis, u: X.clone().negate(), v: fwd, r: 0.045,
+        palm: -0.9, f0: 0.4, f1: 2.7, rows: [0.0, -0.022, -0.044], thumb: [1.3, 0.7, 0.07], wrist: V3(-0.02, -0.04, 0.05),
+      });
+      forearm(group, wrL, V3(-0.42, -0.44, 0.32), m);
+    } else if (grip.vertical) {
+      // support hand on a vertical foregrip
+      const wrL = grasp(group, m, {
+        c: V3(0, grip.foreY, grip.fore), a: Y.clone(), u: X.clone().negate(), v: Z.clone().negate(), r: 0.022,
+        palm: -1.2, f0: 0.3, f1: 3.3, rows: [0.03, 0.008, -0.014, -0.036], thumb: [2.5, 1.9, 0.05], wrist: V3(-0.03, -0.03, 0.04),
+      });
+      forearm(group, wrL, V3(-0.5, -0.4, 0.12), m);
+    } else {
+      // support hand cupping the handguard from below-left, thumb along the left side
+      const wrL = grasp(group, m, {
+        c: V3(0, grip.foreY + 0.042, grip.fore), a: Z.clone().negate(), u: X.clone().negate(), v: Y.clone().negate(), r: 0.042,
+        palm: 0.75, f0: 1.25, f1: 3.6, rows: [0.03, 0.009, -0.012, -0.033], thumb: [-0.25, -0.6, 0.02], wrist: V3(-0.02, -0.03, 0.045),
+      });
+      forearm(group, wrL, V3(-0.52, -0.38, grip.fore + 0.55), m);
     }
     return { group, muzzle };
   }

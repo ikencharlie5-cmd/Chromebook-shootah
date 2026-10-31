@@ -316,7 +316,8 @@ export class Hud {
     this.buyEntries = items.map((it, i) => {
       const n = document.createElement('div');
       n.className = 'buy-item';
-      n.innerHTML = `<span class="nm">${it.def.name}</span><span class="pr">¤ ${it.def.price}</span><span class="ds">${it.desc}</span><span class="key">[${i + 1}]</span>`;
+      const cat = it.def.category ? `<span class="cat">${it.def.category}</span>` : '<span class="cat">Shield</span>';
+      n.innerHTML = `${cat}<span class="nm">${it.def.name}</span><span class="pr">¤ ${it.def.price}</span><span class="ds">${it.desc}</span>${i < 9 ? `<span class="key">[${i + 1}]</span>` : ''}`;
       n.addEventListener('mousedown', (e) => { e.stopPropagation(); this.game.buy(it.id); });
       this.el.buyItems.appendChild(n);
       return { ...it, node: n };
@@ -325,8 +326,6 @@ export class Hud {
   }
 
   buyKey(index) {
-    if (index === 6) { this.game.buy('ab:q'); return; }
-    if (index === 7) { this.game.buy('ab:f'); return; }
     const it = this.buyEntries[index];
     if (it) this.game.buy(it.id);
   }
@@ -361,6 +360,11 @@ export class Hud {
 }
 
 function describe(d) {
-  const role = { pistol: 'Sidearm', smg: 'SMG · run & gun', rifle: 'Rifle · one-tap headshots', sniper: 'Sniper · right-click to scope' }[d.kind];
-  return `${role} · ${d.dmg.body} body / ${d.dmg.head} head · ${d.mag} rounds`;
+  const notes = {
+    bolt: 'Hand cannon', hornet: '3-round bursts', wasp: 'Run & gun', thunder: `${d.pellets} pellets · brutal up close`,
+    raptor: 'Fast fire, easy spray', talon: 'One-tap headshots', bastion: '100-round belt, slow', needle: 'Cheap bolt-action · scope',
+    arbiter: 'Semi-auto · scope', lynx: 'One-shot body · scope',
+  };
+  const per = d.pellets ? ' per pellet' : '';
+  return `${notes[d.id] || d.category} · ${d.dmg.body} body / ${d.dmg.head} head${per} · ${d.mag} rds`;
 }

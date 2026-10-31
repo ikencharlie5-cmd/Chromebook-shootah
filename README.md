@@ -98,10 +98,23 @@ balconies, rocks, bushes and puddles, real-time shadows (Medium/High graphics) a
 | --- | --- | --- |
 | Pip-9 | free | Semi-auto pistol |
 | Bolt .50 | ¤800 | Hand cannon, one-taps the head at close range |
+| Hornet Burst | ¤1400 | PDW, 3-round bursts |
 | Wasp SMG | ¤1600 | Fast fire, accurate while moving |
+| Thunder Pump | ¤1800 | Shotgun, 9 pellets, one-shots up close |
+| Needle | ¤1200 | Budget bolt-action sniper with a scope |
+| Arbiter DMR | ¤2400 | Semi-auto scoped marksman rifle |
+| Raptor AR | ¤2800 | Fast-firing rifle, easy to spray |
 | Talon Rifle | ¤2900 | One-tap headshots, strong recoil |
-| Lynx Sniper | ¤4500 | Scope with right click, one shot to the body kills |
+| Bastion LMG | ¤3200 | 100-round belt, slows you down |
+| Lynx Sniper | ¤4500 | One shot to the body kills |
 | Light / Heavy Shield | ¤400 / ¤1000 | +25 / +50 damage absorbed |
+
+## Locker & skins
+
+From the main menu open the **Locker**. Spend coins to **roll** (¤100) — a reel spins and lands on a random
+skin for a random weapon or knife (Combat Knife or Karambit). Rarities: Common 58%, Rare 28%, Epic 11%,
+Legendary 3%. Equip anything you own; duplicates refund ¤30. You earn coins after every match
+(+50, +10 per kill, +100 for a win). Your Locker is saved in the browser. Bots use random skins too.
 
 ## Code layout
 
@@ -120,7 +133,9 @@ js/entities.js              players/bots, hitboxes, movement + collision
 js/weapons.js               weapon stats and recoil patterns
 js/viewmodel.js             first-person gun and cartoon hands styled after your agent
 js/people.js                cartoon agent characters (faces, hair, outfits), outlines, animation
-js/guns.js                  weapon models (beveled profiles, sights, rails, curved mags)
+js/guns.js                  weapon + knife models and skin materials/patterns
+js/skins.js                 skins, rarities, rolling, saved profile
+js/locker.js                Locker UI (equip skins, roll reel)
 js/models.js                muzzle flash, the Core
 js/effects.js               tracers, bullet holes, particles, explosion
 js/hud.js                   HUD, ability bar, minimap, killfeed, scoreboard, buy menu

@@ -131,14 +131,15 @@ html, body {
 
 /* ---------- buy menu ---------- */
 #buyMenu {
-  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, 94vw);
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(980px, 96vw);
   background: rgba(12, 16, 22, 0.94); border: 1px solid rgba(255,255,255,0.12); padding: 18px 22px;
 }
 .buy-head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
 .buy-head h2 { margin: 0; letter-spacing: 4px; }
 #buyCredits { font-size: 22px; font-weight: 800; color: var(--gold); }
 .buy-tip { font-size: 12px; opacity: 0.6; margin-left: auto; }
-#buyItems { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+#buyItems { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.buy-item .cat { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.55; }
 .buy-item {
   background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 10px 12px; cursor: pointer;
   display: flex; flex-direction: column; gap: 4px; transition: background 0.12s;
@@ -244,3 +245,43 @@ button.primary:hover { filter: brightness(1.1); }
 .select-buttons { display: flex; gap: 10px; margin-top: 12px; }
 .select-buttons button { margin: 0; }
 @media (max-width: 760px) { #agentGrid { grid-template-columns: repeat(3, 1fr); } #agentDetail .abil { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- locker ---------- */
+.locker-wrap { width: min(1180px, 97vw); margin: auto; }
+.locker-head { display: flex; align-items: center; gap: 14px; }
+.locker-head h2 { margin: 0; letter-spacing: 6px; font-size: 30px; flex: 1; text-align: left; }
+.locker-head button { width: auto; margin: 0; padding: 10px 22px; }
+.locker-head .coins { font-size: 24px; font-weight: 800; color: var(--gold); }
+#rollBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+#lockerOdds { text-align: left; font-size: 12px; margin: 6px 0 12px; opacity: 0.85; }
+.locker-body { display: grid; grid-template-columns: 220px 1fr; gap: 14px; }
+#lockerWeapons { display: flex; flex-direction: column; gap: 6px; max-height: 66vh; overflow-y: auto; }
+.locker-weapon { background: rgba(255,255,255,0.05); border-left: 4px solid var(--rc); padding: 8px 12px; cursor: pointer; text-align: left; }
+.locker-weapon b { display: block; font-size: 14px; } .locker-weapon span { font-size: 11px; opacity: 0.7; }
+.locker-weapon.sel { background: rgba(255,255,255,0.16); }
+.locker-preview { background: radial-gradient(ellipse at center, #222b38, #10141b); position: relative; text-align: center; padding: 6px; }
+#lockerCanvas { width: 520px; height: 280px; max-width: 100%; }
+#lockerTitle { font-size: 20px; font-weight: 800; letter-spacing: 2px; padding-bottom: 6px; }
+#lockerSkins { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; max-height: 32vh; overflow-y: auto; }
+.skin-card { background: rgba(255,255,255,0.05); border: 2px solid transparent; border-bottom: 3px solid var(--rc); padding: 6px; cursor: pointer; text-align: center; }
+.skin-card img { width: 100%; display: block; }
+.skin-card b { display: block; font-size: 13px; margin-top: 2px; } .skin-card span { font-size: 11px; color: var(--rc); }
+.skin-card.on { border-color: var(--rc); box-shadow: 0 0 14px var(--rc); }
+.skin-card.locked { opacity: 0.4; cursor: default; }
+.skin-card .lock { height: 84px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+
+.roll-wrap { width: min(1000px, 96vw); margin: auto; text-align: center; }
+#reelWindow { position: relative; overflow: hidden; height: 150px; background: #0c1016; border: 2px solid rgba(255,255,255,0.15); }
+#reel { display: flex; position: absolute; left: 0; top: 10px; will-change: transform; }
+.reel-card { width: 160px; margin-right: 10px; flex: none; background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.3)); border-bottom: 4px solid var(--rc); padding: 4px; }
+.reel-card img { width: 150px; height: 84px; display: block; }
+.reel-card b { display: block; font-size: 12px; } .reel-card span { font-size: 10px; opacity: 0.7; }
+.reel-marker { position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: var(--gold); box-shadow: 0 0 12px var(--gold); }
+#rollResult { margin-top: 18px; padding: 16px; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--rc) 30%, transparent), transparent 70%); }
+#rollRarity { font-size: 18px; font-weight: 900; letter-spacing: 6px; color: var(--rc); }
+#rollCanvas { width: 460px; height: 240px; max-width: 100%; }
+#rollName { font-size: 26px; font-weight: 900; }
+#rollNote { opacity: 0.8; margin: 4px 0 10px; }
+.roll-buttons { display: flex; gap: 10px; justify-content: center; } .roll-buttons button { width: 200px; }
+#matchCoins { color: var(--gold); font-weight: 700; }
+#rollOverlay { background: rgba(6, 9, 14, 0.95); }
