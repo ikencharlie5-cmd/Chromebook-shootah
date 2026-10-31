@@ -120,7 +120,8 @@ js/entities.js              players/bots, hitboxes, movement + collision
 js/weapons.js               weapon stats and recoil patterns
 js/viewmodel.js             first-person gun and cartoon hands styled after your agent
 js/people.js                cartoon agent characters (faces, hair, outfits), outlines, animation
-js/models.js                guns, the Core
+js/guns.js                  weapon models (beveled profiles, sights, rails, curved mags)
+js/models.js                muzzle flash, the Core
 js/effects.js               tracers, bullet holes, particles, explosion
 js/hud.js                   HUD, ability bar, minimap, killfeed, scoreboard, buy menu
 js/audio.js                 synthesized WebAudio sound effects

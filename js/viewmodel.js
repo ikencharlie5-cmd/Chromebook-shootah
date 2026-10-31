@@ -198,6 +198,14 @@ export class ViewModel {
     this.holder.add(this.current.group);
     this.current.muzzle.add(this.flash);
     this.equipT = equipTime; this.equipDur = Math.max(equipTime, 0.01);
+    // per-weapon placement: long guns sit lower and further out so sights don't block the view
+    // [x, y, z, yaw]: the gun runs from the lower right toward the centre so you see its side
+    const OFF = {
+      talon: [0.25, -0.25, -0.6, 0.12], lynx: [0.25, -0.26, -0.62, 0.11], wasp: [0.23, -0.23, -0.55, 0.12],
+      pip: [0.19, -0.21, -0.52, 0.05], bolt: [0.19, -0.21, -0.52, 0.05], knife: [0.22, -0.25, -0.6, 0.18],
+    }[id] || [0.21, -0.22, -0.58, 0.08];
+    this.base.set(OFF[0], OFF[1], OFF[2]);
+    this.baseYaw = OFF[3];
   }
 
   kick(amount) {
@@ -271,6 +279,6 @@ export class ViewModel {
       this.base.y + by + this.swayY - drop - s.crouch * 0.01,
       this.base.z + this.kickZ,
     );
-    g.rotation.set(this.kickRot - tilt, swingRot * 0.8, swingRot * 0.6);
+    g.rotation.set(this.kickRot - tilt, (this.baseYaw || 0) + swingRot * 0.8, swingRot * 0.6);
   }
 }
