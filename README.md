@@ -120,6 +120,11 @@ skin for a random weapon or knife (Combat Knife or Karambit). Rarities: Common 5
 Legendary 3%, and knives are a special ★ drop (4% of rolls). Equip anything you own; duplicates refund ¤30. You earn coins after every match
 (+50, +10 per kill, +100 for a win). Your Locker is saved in the browser. Bots use random skins too.
 
+## Releasing
+
+Before committing a change, run `python3 tools/bump-version.py`. It stamps a new version on every script and
+stylesheet URL so players' browsers always load a matching set of files after an update.
+
 ## Code layout
 
 ```

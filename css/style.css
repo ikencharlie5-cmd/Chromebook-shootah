@@ -318,3 +318,7 @@ button.primary:hover { filter: brightness(1.1); }
 .knife-odds { color: #ffd23f; font-weight: 800; }
 .reel-card.knife { background: linear-gradient(180deg, rgba(255,210,63,0.35), rgba(0,0,0,0.3)); box-shadow: inset 0 0 0 2px #ffd23f; }
 @media (max-width: 800px) { .lobby-left { display: none; } }
+
+#loadError { position: fixed; inset: 0; z-index: 1000; background: #0e1116; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
+#loadError.hidden { display: none; }
+#loadError pre { opacity: 0.5; font-size: 12px; max-width: 90vw; white-space: pre-wrap; }

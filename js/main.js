@@ -1,8 +1,8 @@
-import { Game } from './game.js';
-import { Sound } from './audio.js';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js';
-import { Locker } from './locker.js';
-import { SKINS, RARITY_ORDER, equippedFor } from './skins.js';
+import { Game } from './game.js?v=20261031031628';
+import { Sound } from './audio.js?v=20261031031628';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031031628';
+import { Locker } from './locker.js?v=20261031031628';
+import { SKINS, RARITY_ORDER, equippedFor } from './skins.js?v=20261031031628';
 
 const $ = (id) => document.getElementById(id);
 
@@ -184,7 +184,7 @@ function lobbyHeld() {
 function refreshLobby() {
   const agent = AGENT_BY_ID[settings.agent] || AGENTS[0];
   settings.agent = agent.id;
-  game.buildLobby(agent, lobbyHeld());
+  try { game.buildLobby(agent, lobbyHeld()); } catch (err) { console.error('lobby', err); }
   $('tagAgent').textContent = `${agent.name} · ${agent.role}`;
   $('tagAgent').style.color = '#' + agent.accent.toString(16).padStart(6, '0');
 }
@@ -335,7 +335,9 @@ function loop(now) {
   last = now;
   if (game.running) game.frame(dt);
   else {
-    const tags = game.renderLobby(now / 1000, dt);
+    let tags = null;
+    try { tags = game.lobby ? game.renderLobby(now / 1000, dt) : null; } catch (err) { console.error(err); }
+    if (!tags) game.renderIdle(now / 1000, dt);
     const show = tags && !$('menu').classList.contains('hidden');
     for (let i = 0; i < 3; i++) {
       const el = $('tag' + i);

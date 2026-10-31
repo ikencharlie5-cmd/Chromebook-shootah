@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js';
-import { makeWeaponState } from './weapons.js';
+import * as THREE from '../lib/three.module.min.js?v=20261031031628';
+import { makeWeaponState } from './weapons.js?v=20261031031628';
 
 export const RUN_SPEED = 5.4;
 export const WALK_SPEED = 2.9;

@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js';
-import { buildGun, buildFlash, glow } from './models.js';
-import { toonGradient, outlineMaterial } from './people.js';
+import * as THREE from '../lib/three.module.min.js?v=20261031031628';
+import { buildGun, buildFlash, glow } from './models.js?v=20261031031628';
+import { toonGradient, outlineMaterial } from './people.js?v=20261031031628';
 
 const toonCache = new Map();
 function toon(color) {
