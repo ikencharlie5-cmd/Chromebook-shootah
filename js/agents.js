@@ -12,7 +12,7 @@ export const ABILITY_INFO = {
   heal: { name: 'Mend', desc: 'Heals you (or the teammate in your crosshair) for 60 HP over 4s.' },
   wall: { name: 'Barrier', desc: 'Raises a wall where you aim. Blocks bullets and movement for 25s or until destroyed.' },
   smokeline: { name: 'Nightfall', desc: 'ULTIMATE · Drops a line of four smokes along your aim.' },
-  teamheal: { name: 'Lifeline', desc: 'ULTIMATE · Fully heals every living teammate and gives them 50 shield.' },
+  teamheal: { name: 'Lifeline', desc: 'ULTIMATE · Revives every fallen teammate where they fell, then fully heals the team and gives everyone 50 shield.' },
   reveal: { name: 'Overwatch', desc: 'ULTIMATE · Reveals every enemy on the map three times over 6s.' },
   inferno: { name: 'Inferno', desc: 'ULTIMATE · Calls down a huge firestorm where you aim.' },
   overdrive: { name: 'Overdrive', desc: 'ULTIMATE · For 10s: faster movement and fire rate, perfect accuracy while moving, kills heal you.' },

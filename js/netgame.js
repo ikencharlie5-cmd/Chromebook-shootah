@@ -1,7 +1,7 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171146';
-import { makeWeaponState } from './weapons.js?v=20261031171146';
-import { applyMovement } from './entities.js?v=20261031171146';
-import { wrapAngle, yawTo } from './util.js?v=20261031171146';
+import * as THREE from '../lib/three.module.min.js?v=20261031171522';
+import { makeWeaponState } from './weapons.js?v=20261031171522';
+import { applyMovement } from './entities.js?v=20261031171522';
+import { wrapAngle, yawTo } from './util.js?v=20261031171522';
 
 // Multiplayer glue mixed into Game.
 //   Host: simulates the whole match (bots + every player), applies remote players' inputs,
@@ -223,6 +223,13 @@ export const NetMixin = {
       const wasAlive = c.alive;
       c.alive = !!o.a;
       if (wasAlive && !c.alive) { c.deadT = 0; if (c === p) { this.hud.scope(false); p.scoped = false; } }
+      if (!wasAlive && c.alive && c === p && o.tp === p.tp) {
+        // revived mid-round (Lifeline): stand back up where we fell
+        p.pos.set(...o.p); p.vel.set(0, 0, 0);
+        this.deathCam = null; this.spectating = null;
+        this.viewmodel.setWeapon(p.weapon.def.id, 0.4);
+        this.hud.message('REVIVED', '', 'win', 1.5);
+      }
       c.health = o.h; c.armor = o.ar; c.credits = o.cd; c.kills = o.k; c.deaths = o.d; c.assists = o.as || 0; c.hasCore = !!o.hc;
       c.dmgDealt = o.dd; c.hitsLanded = o.hl; c.headHits = o.hh;
       c.overdriveT = o.od ? 1 : 0;

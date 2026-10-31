@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171146';
-import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031171146';
+import * as THREE from '../lib/three.module.min.js?v=20261031171522';
+import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031171522';
 
 const GRAV = 14;
 const SMOKE_R = 4.3;
@@ -183,17 +183,24 @@ export class Abilities {
         this.sfx('ult', c.pos, c);
         return true;
       }
-      case 'teamheal':
+      case 'teamheal': {
+        // revive fallen teammates where they fell, then heal + shield everyone
+        let revived = 0;
         for (const o of g.combatants) {
-          if (!o.alive || o.team !== c.team) continue;
+          if (o.team !== c.team) continue;
+          if (!o.alive) { g.revive(o); revived++; }
           o.health = 100;
           o.armor = Math.max(o.armor, 50);
           g.effects.burst(_a.set(o.pos.x, o.pos.y + 1.2, o.pos.z), _b.set(0, 1, 0), 'heal', 18, 3);
+          this.ring(new THREE.Vector3(o.pos.x, o.pos.y + 0.1, o.pos.z), 0x5dffb0, 3, 0.8);
         }
         this.sfx('ult', null, null);
-        if (c.team === g.playerTeam) g.hud.message('', `${c.isPlayer ? 'You' : c.name} healed the team`, 'win', 1.6);
-        g.emit?.({ e: 'msg', team: c.team, sub: `${c.name} healed the team` });
+        this.sfx('heal', null, null);
+        const what = revived ? `revived ${revived} teammate${revived > 1 ? 's' : ''} and healed the team` : 'healed the team';
+        if (c.team === g.playerTeam) g.hud.message(revived ? 'LIFELINE' : '', `${c.isPlayer ? 'You' : c.name} ${what}`, 'win', 2);
+        g.emit?.({ e: 'msg', team: c.team, sub: `${c.name} ${what}` });
         return true;
+      }
       case 'reveal':
         for (let i = 0; i < 3; i++) {
           this.timers.push({ t: i * 2, fn: () => {

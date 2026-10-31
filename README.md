@@ -73,7 +73,7 @@ are bought in the buy menu and carry over between rounds. Ultimates charge from 
 | Agent | Look | Role | Q | E (free) | F | X (ultimate) |
 | --- | --- | --- | --- | --- | --- | --- |
 | Haze | Hooded mystic, glowing tattoos, long coat | Controller | Incendiary | Smoke ×2 | Barrier wall | Nightfall — line of 4 smokes |
-| Vesper | Silver-haired medic with round glasses | Sentinel | Barrier wall | Mend (heal) | Recon dart | Lifeline — heal team + shields |
+| Vesper | Medic with a lilac bob and round glasses | Sentinel | Barrier wall | Mend (heal) | Recon dart | Lifeline — revive fallen teammates + heal team + shields |
 | Flare | Big orange afro, goggles, bomber jacket | Initiator | Flashbang ×2 | Recon dart | Smoke | Overwatch — reveal all enemies |
 | Ember | Spiky red hair, freckles, leather jacket | Duelist | Incendiary | Dash | Flashbang | Inferno — huge firestorm |
 | Jolt | Blue mohawk, headphones, lightning tattoo | Duelist | Flashbang ×2 | Dash ×2 | Mend (heal) | Overdrive — speed, fire rate, accuracy |

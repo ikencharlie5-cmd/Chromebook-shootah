@@ -1,18 +1,18 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171146';
-import { GameMap } from './map.js?v=20261031171146';
-import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031171146';
-import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031171146';
-import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031171146';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031171146';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031171146';
-import { BotBrain, DIFFICULTY } from './bots.js?v=20261031171146';
-import { Abilities } from './abilities.js?v=20261031171146';
-import { Effects } from './effects.js?v=20261031171146';
-import { ViewModel } from './viewmodel.js?v=20261031171146';
-import { Hud } from './hud.js?v=20261031171146';
-import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031171146';
-import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031171146';
-import { NetMixin } from './netgame.js?v=20261031171146';
+import * as THREE from '../lib/three.module.min.js?v=20261031171522';
+import { GameMap } from './map.js?v=20261031171522';
+import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031171522';
+import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031171522';
+import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031171522';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031171522';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031171522';
+import { BotBrain, DIFFICULTY } from './bots.js?v=20261031171522';
+import { Abilities } from './abilities.js?v=20261031171522';
+import { Effects } from './effects.js?v=20261031171522';
+import { ViewModel } from './viewmodel.js?v=20261031171522';
+import { Hud } from './hud.js?v=20261031171522';
+import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031171522';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031171522';
+import { NetMixin } from './netgame.js?v=20261031171522';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -891,6 +891,21 @@ export class Game {
     const vel = new THREE.Vector3(cy * (2 + Math.random()), 2.2 + Math.random(), -sy * (2 + Math.random())).add(c.vel);
     this.effects.casing(pos, vel);
     if (Math.random() < 0.3) this.sound.casing();
+  }
+
+  // Bring a dead combatant back where they fell (Lifeline ultimate).
+  revive(c) {
+    if (c.alive || this.phase === 'end') return;
+    c.alive = true;
+    c.health = 100;
+    c.deadT = 0;
+    c.vel.set(0, 0, 0);
+    c.action = null;
+    c.clearStatus();
+    c.pos.y = Math.max(c.pos.y, this.map.heightAt(c.pos.x, c.pos.z));
+    if (c.model) { c.model.root.visible = true; c.model.root.rotation.x = 0; }
+    if (c.isPlayer) { this.deathCam = null; this.spectating = null; this.viewmodel.setWeapon(c.weapon.def.id, 0.4); this.hud.message('REVIVED', '', 'win', 1.5); }
+    if (c.ai) { c.ai.target = null; c.ai.goalKey = ''; }
   }
 
   creditAssist(victim, by, seconds) {
