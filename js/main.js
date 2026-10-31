@@ -1,12 +1,12 @@
-import { Game } from './game.js?v=20261031055727';
-import { Sound } from './audio.js?v=20261031055727';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031055727';
-import { Locker } from './locker.js?v=20261031055727';
-import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031055727';
-import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031055727';
-import { makeRoster } from './game.js?v=20261031055727';
-import { randomMapDef } from './maps.js?v=20261031055727';
-import { Party, MAX_PARTY } from './net.js?v=20261031055727';
+import { Game } from './game.js?v=20261031060040';
+import { Sound } from './audio.js?v=20261031060040';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031060040';
+import { Locker } from './locker.js?v=20261031060040';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031060040';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031060040';
+import { makeRoster } from './game.js?v=20261031060040';
+import { randomMapDef } from './maps.js?v=20261031060040';
+import { Party, MAX_PARTY } from './net.js?v=20261031060040';
 
 const $ = (id) => document.getElementById(id);
 
@@ -177,7 +177,8 @@ bindSettings();
 
 function showPause() {
   placeSettings('pauseSettingsSlot');
-  $('pauseNote').textContent = game.net ? 'Online match — the game keeps running while you\'re paused' : '';
+  $('pauseNote').textContent = (game.net ? 'Online match — the game keeps running while you\'re paused. ' : '')
+    + (game.ranked && !game.practice ? `Quitting a ranked match costs ${LEAVE_PENALTY} RR.` : '');
   $('pauseMenu').classList.remove('hidden');
 }
 
@@ -468,7 +469,16 @@ $('resumeBtn').addEventListener('click', () => {
   enterFullscreen();
   lock();
 });
+const LEAVE_PENALTY = 25;
 const toMenu = (silent = false) => {
+  // walking out of a ranked match counts against you
+  if (!silent && game.running && game.ranked && !game.practice) {
+    const prof = locker.profile;
+    prof.rr = Math.max(0, prof.rr - LEAVE_PENALTY);
+    saveProfile(prof);
+    setTimeout(() => party.status(`Left a ranked match: -${LEAVE_PENALTY} RR`, true), 50);
+    refreshRank();
+  }
   sound.lobbyMusic(true);
   if (game.net && !silent) {
     if (party.isHost) party.send({ t: 'abort' });
@@ -573,7 +583,11 @@ setInterval(() => {
 }, 50);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (game.running) game.frame(dt);
+  if (game.running) {
+    game.frame(dt);
+    const needClick = !locked() && $('pauseMenu').classList.contains('hidden') && !game.buyOpen && $('matchEnd').classList.contains('hidden');
+    $('clickToPlay').classList.toggle('hidden', !needClick);
+  }
   else {
     let tags = null;
     try { tags = game.lobby ? game.renderLobby(now / 1000, dt) : null; } catch (err) { console.error(err); }

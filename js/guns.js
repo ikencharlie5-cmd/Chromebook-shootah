@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031055727';
-import { outlineMaterial } from './people.js?v=20261031055727';
-import { SKINS } from './skins.js?v=20261031055727';
+import * as THREE from '../lib/three.module.min.js?v=20261031060040';
+import { outlineMaterial } from './people.js?v=20261031060040';
+import { SKINS } from './skins.js?v=20261031060040';
 
 // Weapon models. Every gun points down -Z with the grip at the origin.
 // Bodies are built from beveled side profiles (shapes drawn in forward/up space and

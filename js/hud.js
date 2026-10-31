@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031055727';
-import { fmtTime } from './util.js?v=20261031055727';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031055727';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031060040';
+import { fmtTime } from './util.js?v=20261031060040';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031060040';
 
 const $ = (id) => document.getElementById(id);
 
@@ -346,11 +346,11 @@ export class Hud {
       const rows = g.combatants.filter((c) => c.team === team)
         .sort((a, b) => b.kills - a.kills)
         .map((c) => `<tr class="${c.alive ? '' : 'dead'} ${c.isPlayer ? 'me' : ''}">
-          <td>${c.name} <span class="ag">${c.agent.name}</span>${c.hasCore && team === g.playerTeam ? ' ◆' : ''}</td><td>${c.kills}</td><td>${c.deaths}</td>
+          <td>${c.name} <span class="ag">${c.agent.name}</span>${c.hasCore && team === g.playerTeam ? ' ◆' : ''}</td><td>${c.kills}</td><td>${c.deaths}</td><td>${Math.round(c.dmgDealt || 0)}</td>
           <td>${team === g.playerTeam ? '¤ ' + c.credits : ''}</td>
           <td>${team === g.playerTeam ? (c.inv.primary ? c.inv.primary.def.name : c.inv.secondary?.def.name ?? '') : ''}</td></tr>`)
         .join('');
-      return `<table><tr><th>PLAYER</th><th>K</th><th>D</th><th>CREDITS</th><th>WEAPON</th></tr>${rows}</table>`;
+      return `<table><tr><th>PLAYER</th><th>K</th><th>D</th><th>DMG</th><th>CREDITS</th><th>WEAPON</th></tr>${rows}</table>`;
     };
     el.innerHTML = `<div class="ally"><h3>YOUR TEAM · ${g.score[g.playerTeam]}</h3>${table(g.playerTeam)}</div>
       <div class="enemy"><h3>ENEMY TEAM · ${g.score[1 - g.playerTeam]}</h3>${table(1 - g.playerTeam)}</div>`;

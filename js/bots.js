@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031055727';
-import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031055727';
-import { recoilOffset } from './weapons.js?v=20261031055727';
+import * as THREE from '../lib/three.module.min.js?v=20261031060040';
+import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031060040';
+import { recoilOffset } from './weapons.js?v=20261031060040';
 
 export const DIFFICULTY = {
   easy:   { react: [0.5, 0.85], aimErr: 0.13, errDecay: 2.2, turn: 4.5, headChance: 0.1, fov: 0.9, comp: 0.3 },

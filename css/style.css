@@ -399,3 +399,6 @@ button.mini { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
 .lobby-tabs .tab { white-space: nowrap; }
 #sideTag.practice { left: 50% !important; top: 78px; transform: translateX(-50%); color: var(--gold) !important; }
 @media (max-width: 1000px) { .lobby-tabs .tab { padding: 8px 10px; font-size: 13px; } .logo { font-size: 18px; } }
+
+#clickToPlay { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 22px; font-weight: 900; letter-spacing: 6px;
+  background: rgba(10,14,20,0.75); padding: 12px 28px; border: 2px solid var(--gold); color: var(--gold); animation: pulse 1.2s infinite; }
