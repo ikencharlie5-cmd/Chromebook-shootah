@@ -1,0 +1,1 @@
+-- Replaces Roblox's default "Health" script so players don't regenerate health mid-round.

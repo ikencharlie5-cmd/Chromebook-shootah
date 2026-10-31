@@ -229,3 +229,7 @@ When a second player arrives a 25 s countdown starts (3 s at 6/6) and bots fill 
 **BROWSE OPEN LOBBIES** lists every public lobby, and hosts can tick **PUBLIC** to let anyone join a normal party.
 Open lobbies are listed in Firestore (`lobbies/{partyCode}`, refreshed every 8 s); matches still run peer-to-peer
 on the host's computer.
+
+## Roblox version
+
+A Roblox rebuild of the game lives in [`roblox/`](roblox/README.md) (Luau + Rojo). See its README for setup.

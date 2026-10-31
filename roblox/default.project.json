@@ -1,0 +1,49 @@
+{
+  "name": "ChromebookShootah",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      },
+      "$properties": {
+        "CameraMode": "LockFirstPerson",
+        "CharacterWalkSpeed": 16,
+        "CharacterJumpHeight": 4.5
+      },
+      "StarterCharacterScripts": {
+        "$path": "src/character"
+      }
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": false,
+        "RespawnTime": 0
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "Gravity": 140
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "ClockTime": 15,
+        "Brightness": 2.5,
+        "GlobalShadows": true
+      }
+    }
+  }
+}
