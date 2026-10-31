@@ -1,18 +1,18 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031055456';
-import { GameMap } from './map.js?v=20261031055456';
-import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031055456';
-import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031055456';
-import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031055456';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031055456';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031055456';
-import { BotBrain, DIFFICULTY } from './bots.js?v=20261031055456';
-import { Abilities } from './abilities.js?v=20261031055456';
-import { Effects } from './effects.js?v=20261031055456';
-import { ViewModel } from './viewmodel.js?v=20261031055456';
-import { Hud } from './hud.js?v=20261031055456';
-import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031055456';
-import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031055456';
-import { NetMixin } from './netgame.js?v=20261031055456';
+import * as THREE from '../lib/three.module.min.js?v=20261031055727';
+import { GameMap } from './map.js?v=20261031055727';
+import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031055727';
+import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031055727';
+import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031055727';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031055727';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031055727';
+import { BotBrain, DIFFICULTY } from './bots.js?v=20261031055727';
+import { Abilities } from './abilities.js?v=20261031055727';
+import { Effects } from './effects.js?v=20261031055727';
+import { ViewModel } from './viewmodel.js?v=20261031055727';
+import { Hud } from './hud.js?v=20261031055727';
+import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031055727';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031055727';
+import { NetMixin } from './netgame.js?v=20261031055727';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -308,6 +308,7 @@ export class Game {
     const attackers = [];
     for (const c of this.combatants) {
       c.tp = (c.tp || 0) + 1;
+      c.hist = [];   // positions jump at round start: don't rewind across it
       if (pistolRound) {
         c.credits = 800;
         c.resetLoadout();

@@ -1,12 +1,12 @@
-import { Game } from './game.js?v=20261031055456';
-import { Sound } from './audio.js?v=20261031055456';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031055456';
-import { Locker } from './locker.js?v=20261031055456';
-import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031055456';
-import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031055456';
-import { makeRoster } from './game.js?v=20261031055456';
-import { randomMapDef } from './maps.js?v=20261031055456';
-import { Party, MAX_PARTY } from './net.js?v=20261031055456';
+import { Game } from './game.js?v=20261031055727';
+import { Sound } from './audio.js?v=20261031055727';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031055727';
+import { Locker } from './locker.js?v=20261031055727';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031055727';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031055727';
+import { makeRoster } from './game.js?v=20261031055727';
+import { randomMapDef } from './maps.js?v=20261031055727';
+import { Party, MAX_PARTY } from './net.js?v=20261031055727';
 
 const $ = (id) => document.getElementById(id);
 
