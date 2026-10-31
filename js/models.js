@@ -1,4 +1,4 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031060040';
+import * as THREE from '../lib/three.module.min.js?v=20261031165834';
 
 const geoCache = new Map();
 function cached(key, make) {
@@ -44,7 +44,7 @@ function limb(parent, a, b, r, material, tapered = 0) {
 }
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
-import { buildGun } from './guns.js?v=20261031060040';
+import { buildGun } from './guns.js?v=20261031165834';
 export { buildGun };
 
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -59,7 +59,7 @@ export function buildFlash() {
   return grp;
 }
 
-export { buildCharacter } from './people.js?v=20261031060040';
+export { buildCharacter } from './people.js?v=20261031165834';
 
 export function setCharacterGun(model, id, skins = null) {
   if (model.gunId === id) return;
@@ -73,7 +73,7 @@ export function setCharacterGun(model, id, skins = null) {
   muzzle.add(model.flash);
 }
 
-export { animateCharacter } from './people.js?v=20261031060040';
+export { animateCharacter } from './people.js?v=20261031165834';
 
 // The objective device ("Core").
 export function buildCore() {

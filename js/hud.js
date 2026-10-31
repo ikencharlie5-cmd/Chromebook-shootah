@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031060040';
-import { fmtTime } from './util.js?v=20261031060040';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031060040';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031165834';
+import { fmtTime } from './util.js?v=20261031165834';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031165834';
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,7 +11,7 @@ export class Hud {
     for (const id of ['hud', 'scoreAlly', 'scoreEnemy', 'roundTimer', 'roundLabel', 'aliveAlly', 'aliveEnemy',
       'minimap', 'killfeed', 'crosshair', 'hitmarker', 'dmgIndicator', 'redFlash', 'scope', 'centerMsg', 'subMsg',
       'progressWrap', 'progressLabel', 'progressFill', 'hint', 'spectate', 'armorVal', 'healthVal', 'credits',
-      'coreTag', 'weaponName', 'ammoMag', 'ammoReserve', 'slots', 'scoreboard', 'buyMenu', 'buyItems', 'buyCredits',
+      'coreTag', 'weaponName', 'ammoMag', 'ammoReserve', 'slots', 'scoreboard', 'buyMenu', 'buyItems', 'buyCredits', 'buyShields', 'buyDetail', 'buyLoadout',
       'sideTag', 'fps', 'lowHp', 'dmgNumbers', 'killBanner', 'kbTitle', 'kbName', 'deathCam', 'abilityBar', 'flashOverlay', 'odTint', 'smokeOverlay', 'buyAbilities', 'agentTag']) {
       this.el[id] = $(id);
     }
@@ -358,32 +358,86 @@ export class Hud {
 
   // ---- buy menu ----
 
+  // Buy menu laid out by category, with gun pictures, a stats panel and shields/abilities below.
   buildBuyMenu() {
-    const items = [
-      ...BUY_LIST.map((id) => ({ id, def: WEAPONS[id], desc: describe(WEAPONS[id]) })),
-      { id: 'light', def: ARMOR.light, desc: '+25 shield' },
-      { id: 'heavy', def: ARMOR.heavy, desc: '+50 shield' },
+    const COLS = [
+      ['SIDEARMS', ['pip', 'bolt']], ['SMGS', ['hornet', 'wasp']], ['SHOTGUNS', ['thunder']],
+      ['RIFLES', ['raptor', 'talon']], ['SNIPERS', ['needle', 'arbiter', 'lynx']], ['HEAVY', ['bastion']],
     ];
-    this.buyEntries = items.map((it, i) => {
+    const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Z', 'V'];
+    this.buyEntries = [];
+    let k = 0;
+    for (const [title, ids] of COLS) {
+      const col = document.createElement('div');
+      col.className = 'buy-col';
+      col.innerHTML = `<div class="buy-col-title">${title}</div>`;
+      for (const id of ids) {
+        const def = WEAPONS[id];
+        const n = document.createElement('div');
+        n.className = 'buy-item gun';
+        n.innerHTML = `<div class="thumb"></div><div class="row"><span class="nm">${def.name}</span><span class="pr">${def.price ? '¤ ' + def.price : 'FREE'}</span></div>
+          <span class="state"></span><span class="key">${KEYS[k] || ''}</span>`;
+        this.addBuyHandlers(n, id, def, describe(def));
+        col.appendChild(n);
+        this.buyEntries.push({ id, def, node: n, thumb: n.querySelector('.thumb'), state: n.querySelector('.state'), key: KEYS[k++] });
+      }
+      this.el.buyItems.appendChild(col);
+    }
+    for (const id of ['light', 'heavy']) {
+      const def = ARMOR[id];
       const n = document.createElement('div');
-      n.className = 'buy-item';
-      const cat = it.def.category ? `<span class="cat">${it.def.category}</span>` : '<span class="cat">Shield</span>';
-      n.innerHTML = `${cat}<span class="nm">${it.def.name}</span><span class="pr">¤ ${it.def.price}</span><span class="ds">${it.desc}</span>${i < 9 ? `<span class="key">[${i + 1}]</span>` : ''}`;
-      n.addEventListener('mousedown', (e) => { e.stopPropagation(); this.game.buy(it.id); });
-      this.el.buyItems.appendChild(n);
-      return { ...it, node: n };
-    });
+      n.className = 'buy-item shield';
+      n.innerHTML = `<div class="shield-ic ${id}"></div><div><span class="nm">${def.name}</span><span class="pr">¤ ${def.price}</span><span class="ds">+${def.value} shield</span></div><span class="state"></span><span class="key">${KEYS[k] || ''}</span>`;
+      this.addBuyHandlers(n, id, def, `Absorbs the next ${def.value} damage you take. Kept if you survive the round.`);
+      this.el.buyShields.appendChild(n);
+      this.buyEntries.push({ id, def, node: n, state: n.querySelector('.state'), key: KEYS[k++] });
+    }
+    this.keyMap = Object.fromEntries(this.buyEntries.map((it) => [it.key, it.id]));
     this.el.buyMenu.addEventListener('mousedown', (e) => e.stopPropagation());
   }
 
-  buyKey(index) {
-    const it = this.buyEntries[index];
-    if (it) this.game.buy(it.id);
+  addBuyHandlers(n, id, def, desc) {
+    n.addEventListener('mousedown', (e) => { e.stopPropagation(); this.game.buy(id); this.showDetail(id, def, desc); });
+    n.addEventListener('mouseenter', () => this.showDetail(id, def, desc));
+  }
+
+  // Right-hand panel: what the item is and how it compares.
+  showDetail(id, def, desc) {
+    const el = this.el.buyDetail;
+    const p = this.game.player;
+    const owned = p && ((def.slot && p.inv[def.slot]?.def.id === id) || (id === 'light' && p.armor >= 25) || (id === 'heavy' && p.armor >= 50));
+    const after = p ? p.credits - (def.price || 0) : 0;
+    const afterHtml = owned ? '<div class="dt-after own">You already have this</div>'
+      : `<div class="dt-after ${after < 0 ? 'neg' : ''}">${after < 0 ? `Need ¤ ${-after} more` : `After buying: ¤ ${after}`}</div>`;
+    if (!def.dmg) {
+      el.innerHTML = `<div class="dt-cat">SHIELD</div><div class="dt-name">${def.name}</div><p>${desc}</p>
+        ${afterHtml}`;
+      return;
+    }
+    const bar = (label, v, text) => `<div class="dt-stat"><span>${label}</span><div class="dt-bar"><i style="width:${Math.round(Math.max(0.04, Math.min(1, v)) * 100)}%"></i></div><b>${text}</b></div>`;
+    const pellets = def.pellets ? ` ×${def.pellets}` : '';
+    const acc = def.scope ? def.scopedSpread : def.spread;
+    el.innerHTML = `<div class="dt-cat">${def.category}</div><div class="dt-name">${def.name}</div><p>${desc}</p>
+      ${bar('Body damage', def.dmg.body * (def.pellets || 1) / 160, def.dmg.body + pellets)}
+      ${bar('Head damage', def.dmg.head * (def.pellets || 1) / 260, def.dmg.head + pellets)}
+      ${bar('Fire rate', def.rpm / 1100, `${def.rpm} rpm${def.burst ? ' (burst)' : ''}`)}
+      ${bar('Magazine', def.mag / 100, `${def.mag}`)}
+      ${bar('Accuracy', 1 - Math.min(1, acc / 0.06), def.scope ? 'scoped' : acc <= 0.004 ? 'high' : acc <= 0.01 ? 'medium' : 'low')}
+      ${bar('Mobility', (def.speedMul - 0.75) / 0.3, `${Math.round(def.speedMul * 100)}%`)}
+      ${afterHtml}`;
+  }
+
+  buyKey(key) {
+    const id = this.keyMap?.[key];
+    if (id) this.game.buy(id);
   }
 
   refreshBuyMenu() {
     const p = this.game.player;
+    if (!p) return;
     this.el.buyCredits.textContent = `¤ ${p.credits}`;
+    const prim = p.inv.primary?.def.name || '—', sec = p.inv.secondary?.def.name || '—';
+    this.el.buyLoadout.innerHTML = `<span>PRIMARY <b>${prim}</b></span><span>SIDEARM <b>${sec}</b></span><span>SHIELD <b>${Math.ceil(p.armor)}</b></span>`;
     for (const it of this.abilityEntries || []) {
       const full = p.charges[it.k] >= it.kit.max;
       it.chg.textContent = `${p.charges[it.k]}/${it.kit.max}`;
@@ -393,14 +447,34 @@ export class Hud {
     for (const it of this.buyEntries) {
       const owned = (it.def.slot && p.inv[it.def.slot]?.def.id === it.id) ||
         (it.id === 'light' && p.armor >= 25) || (it.id === 'heavy' && p.armor >= 50);
+      const poor = !owned && p.credits < it.def.price;
       it.node.classList.toggle('owned', !!owned);
-      it.node.classList.toggle('poor', !owned && p.credits < it.def.price);
+      it.node.classList.toggle('poor', poor);
+      it.state.textContent = owned ? 'OWNED' : poor ? `NEED ¤ ${it.def.price - p.credits}` : '';
+      // gun pictures in your equipped skin (rendered once per skin)
+      if (it.thumb) {
+        const sk = p.skins?.[it.id] || {};
+        const key = `${it.id}|${sk.skin || 'factory'}`;
+        if (it.thumbKey !== key) {
+          it.thumbKey = key;
+          this.thumbCache = this.thumbCache || {};
+          if (!this.thumbCache[key]) {
+            const cv = document.createElement('canvas');
+            try { this.game.renderGunPreview(it.id, sk.skin || 'factory', sk.model, cv, 180, 70, 0.0); this.thumbCache[key] = cv.toDataURL(); } catch { this.thumbCache[key] = ''; }
+          }
+          it.thumb.style.backgroundImage = this.thumbCache[key] ? `url(${this.thumbCache[key]})` : '';
+        }
+      }
     }
   }
 
   showBuy(on) {
     this.el.buyMenu.classList.toggle('hidden', !on);
-    if (on) this.refreshBuyMenu();
+    if (on) {
+      this.refreshBuyMenu();
+      const p = this.game.player, cur = p?.inv.primary?.def || WEAPONS.talon;
+      this.showDetail(cur.id, cur, describe(cur));
+    }
   }
 
   fps(text) {

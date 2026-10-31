@@ -57,7 +57,7 @@ using the free PeerJS service only to find each other). There is no game server 
 | Q / E / F | Abilities (E is your free signature ability) |
 | X | Ultimate |
 | Right click | Scope (sniper) |
-| B | Buy menu (buy phase only) — or press 1–8 inside it |
+| B | Buy menu (buy phase only): weapons by type with stats; keys 1–0 buy guns, Z / V shields, Q / F abilities |
 | 4 (hold) | Plant / defuse the Core |
 | Tab | Scoreboard |
 | Esc | Pause + settings |

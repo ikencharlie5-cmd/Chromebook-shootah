@@ -1,4 +1,4 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031060040';
+import * as THREE from '../lib/three.module.min.js?v=20261031165834';
 
 // Pooled visual effects: tracers, bullet holes, particles, explosions.
 export class Effects {

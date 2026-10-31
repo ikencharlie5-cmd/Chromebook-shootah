@@ -1,7 +1,7 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031060040';
-import { makeWeaponState } from './weapons.js?v=20261031060040';
-import { applyMovement } from './entities.js?v=20261031060040';
-import { wrapAngle, yawTo } from './util.js?v=20261031060040';
+import * as THREE from '../lib/three.module.min.js?v=20261031165834';
+import { makeWeaponState } from './weapons.js?v=20261031165834';
+import { applyMovement } from './entities.js?v=20261031165834';
+import { wrapAngle, yawTo } from './util.js?v=20261031165834';
 
 // Multiplayer glue mixed into Game.
 //   Host: simulates the whole match (bots + every player), applies remote players' inputs,

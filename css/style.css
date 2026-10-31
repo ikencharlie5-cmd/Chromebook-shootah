@@ -402,3 +402,44 @@ button.mini { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
 
 #clickToPlay { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 22px; font-weight: 900; letter-spacing: 6px;
   background: rgba(10,14,20,0.75); padding: 12px 28px; border: 2px solid var(--gold); color: var(--gold); animation: pulse 1.2s infinite; }
+
+/* ---------- buy menu v2 ---------- */
+#buyMenu { width: min(1180px, 97vw); padding: 14px 18px; background: rgba(10, 13, 19, 0.96); }
+.buy-head { align-items: center; }
+#buyLoadout { display: flex; gap: 14px; font-size: 11px; letter-spacing: 1px; opacity: 0.85; }
+#buyLoadout b { color: var(--gold); margin-left: 4px; font-size: 13px; }
+.buy-body { display: grid; grid-template-columns: 1fr 260px; gap: 12px; margin-top: 10px; }
+#buyItems { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 0; }
+.buy-col { display: flex; flex-direction: column; gap: 6px; }
+.buy-col-title { font-size: 11px; letter-spacing: 3px; opacity: 0.6; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+.buy-item.gun { padding: 6px 8px 8px; gap: 2px; position: relative; min-height: 104px; }
+.buy-item .thumb { height: 58px; background: center / contain no-repeat; margin: -2px -4px 0; }
+.buy-item .row { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.buy-item.gun .nm { font-size: 13px; } .buy-item.gun .pr { font-size: 12px; }
+.buy-item .state { font-size: 10px; letter-spacing: 1px; font-weight: 800; height: 12px; }
+.buy-item.owned { border-color: var(--ally); background: rgba(46,230,214,0.08); } .buy-item.owned .state { color: var(--ally); }
+.buy-item.poor { opacity: 0.45; } .buy-item.poor .state { color: #ff8a8a; }
+.buy-item .key { position: absolute; top: 4px; right: 6px; font-size: 10px; opacity: 0.5; font-weight: 800; }
+.buy-item:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.35); }
+#buyDetail { background: rgba(255,255,255,0.04); padding: 12px 14px; font-size: 13px; }
+#buyDetail p { opacity: 0.8; margin: 4px 0 10px; line-height: 1.4; }
+.dt-cat { font-size: 11px; letter-spacing: 3px; opacity: 0.6; }
+.dt-name { font-size: 22px; font-weight: 900; }
+.dt-stat { display: grid; grid-template-columns: 86px 1fr 70px; align-items: center; gap: 6px; margin: 5px 0; font-size: 11px; }
+.dt-stat b { text-align: right; font-size: 11px; }
+.dt-bar { height: 6px; background: rgba(255,255,255,0.12); } .dt-bar i { display: block; height: 100%; background: var(--gold); }
+.dt-after { margin-top: 10px; font-weight: 800; color: var(--gold); } .dt-after.neg { color: #ff8a8a; }
+.buy-bottom { display: grid; grid-template-columns: auto 1fr; gap: 14px; margin-top: 10px; }
+.buy-group .buy-sub { margin: 0 0 6px; }
+#buyShields { display: flex; gap: 8px; }
+.buy-item.shield { flex-direction: row; align-items: center; gap: 10px; min-width: 190px; position: relative; padding: 8px 12px; }
+.buy-item.shield .nm, .buy-item.shield .pr, .buy-item.shield .ds { display: block; }
+.shield-ic { width: 26px; height: 30px; clip-path: polygon(50% 0, 100% 18%, 92% 70%, 50% 100%, 8% 70%, 0 18%); background: linear-gradient(160deg, #cfe9ff, #4f9aff); }
+.shield-ic.heavy { background: linear-gradient(160deg, #fff4c4, #ffb23f); }
+.buy-item.shield .state { position: absolute; bottom: 4px; right: 8px; }
+#buyAbilities { margin-top: 0; }
+@media (max-width: 900px) { #buyItems { grid-template-columns: repeat(3, 1fr); } .buy-body { grid-template-columns: 1fr; } }
+
+.buy-item.gun .row { flex-direction: column; align-items: flex-start; gap: 0; }
+.dt-cat { text-transform: uppercase; }
+.dt-after.own { color: var(--ally); }
