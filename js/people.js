@@ -35,6 +35,8 @@ const G = {
   rbox: (w, h, d, r) => roundedBox(w, h, d, r),
   torus: (r, t, arc = Math.PI * 2) => new THREE.TorusGeometry(r, t, 8, 20, arc),
   cone: (r, h, n = 8) => new THREE.ConeGeometry(r, h, n),
+  // smooth body of revolution from [radius, y] pairs
+  lathe: (pts, n = 20) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), n),
 };
 
 function roundedBox(w, h, d, r) {
@@ -141,214 +143,172 @@ const mix = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t).getHex()
 export function buildCharacter(agent, teamColor, isEnemy = false) {
   const A = agent;
   const rig = new Rig();
-  const big = A.style === 'beard' ? 1.14 : 1;
+  const big = A.style === 'beard' ? 1.1 : 1;
 
   const root = new THREE.Group();
   root.rotation.order = 'YXZ';
   const body = new THREE.Group();
   root.add(body);
 
-  // ---- legs
+  // ---- legs: tapered thigh + shin, one smooth shoe
   const legs = [];
   for (const side of [-1, 1]) {
     const hip = new THREE.Group();
-    hip.position.set(0.13 * side * big, 0.86, 0);
+    hip.position.set(0.105 * side * big, 0.93, 0);
     body.add(hip);
     const knee = new THREE.Group();
-    knee.position.set(0, -0.42, 0);
+    knee.position.set(0, -0.44, 0);
     hip.add(knee);
-    rig.limb(hip, V(0, 0.02, 0), V(0, -0.42, 0), 0.115 * big, A.pants);
-    rig.limb(knee, V(0, 0, 0), V(0, -0.34, 0), 0.1 * big, A.pants);
-    // chunky sneakers / boots
-    rig.add(knee, G.rbox(0.19, 0.14, 0.32, 0.06), A.shoes, 0, -0.4, -0.05);
-    rig.add(knee, G.rbox(0.2, 0.04, 0.33, 0.02), mix(A.shoes, 0xffffff, 0.6), 0, -0.46, -0.05);
-    if (A.style === 'beard' || A.style === 'mohawk') rig.add(knee, G.rbox(0.16, 0.16, 0.08, 0.04), A.outfit2, 0, -0.04, -0.09);
+    rig.add(hip, G.lathe([[0.001, 0.04], [0.085, 0.02], [0.092 * big, -0.08], [0.08, -0.3], [0.068, -0.44], [0.001, -0.47]], 16), A.pants);
+    rig.add(knee, G.lathe([[0.001, 0.03], [0.068, 0.0], [0.072, -0.12], [0.058, -0.34], [0.05, -0.38], [0.001, -0.4]], 16), A.pants);
+    rig.add(knee, G.rbox(0.13, 0.11, 0.27, 0.05), A.shoes, 0, -0.43, -0.045);
+    rig.add(knee, G.rbox(0.135, 0.03, 0.275, 0.014), mix(A.shoes, 0xffffff, 0.7), 0, -0.475, -0.045);
     legs.push({ hip, knee });
   }
 
-  // ---- hips + torso
-  rig.add(body, G.sph(0.21), A.pants, 0, 0.9, 0, 0, 0, 0, 1.05 * big, 0.55, 0.8 * big);
-  rig.add(body, G.cyl(0.215 * big, 0.215 * big, 0.06), shade(A.outfit2, 0.8), 0, 0.98, 0, 0, 0, 0, 1, 1, 0.8);
+  // ---- pelvis + torso as smooth turned shapes (flattened front-to-back)
+  rig.add(body, G.lathe([[0.001, 1.06], [0.165, 1.04], [0.19 * big, 0.97], [0.18 * big, 0.88], [0.12, 0.83], [0.001, 0.82]], 20), A.pants, 0, 0, 0, 0, 0, 0, 1, 1, 0.72);
   const torso = new THREE.Group();
-  torso.position.set(0, 0.95, 0);
+  torso.position.set(0, 0.99, 0);
   body.add(torso);
-  rig.add(torso, G.rbox(0.52 * big, 0.5, 0.34 * big, 0.13), A.outfit, 0, 0.27, 0);
-  rig.add(torso, G.cyl(0.075, 0.08, 0.12), A.skin, 0, 0.56, 0);
+  const jacket = A.style === 'beard' ? A.outfit2 : A.outfit;
+  rig.add(torso, G.lathe([[0.001, -0.02], [0.175 * big, 0.0], [0.19 * big, 0.12], [0.225 * big, 0.3], [0.23 * big, 0.38], [0.2 * big, 0.45], [0.09, 0.5], [0.001, 0.51]], 22), jacket, 0, 0, 0, 0, 0, 0, 1, 1, 0.68);
+  rig.add(torso, G.cyl(0.06, 0.065, 0.12, 14), A.skin, 0, 0.52, 0);
 
-  // ---- head
+  // ---- head (slightly big, friendly)
   const head = new THREE.Group();
-  head.position.set(0, 0.7, 0);
+  head.position.set(0, 0.67, 0);
   torso.add(head);
-  rig.add(head, G.sph(0.2, 20, 16), A.skin, 0, 0, 0, 0, 0, 0, 1, 1.04, 0.96);
-  for (const s of [-1, 1]) rig.add(head, G.sph(0.05), shade(A.skin, 0.95), 0.198 * s, -0.01, 0.01, 0, 0, 0, 0.5, 0.95, 0.8);
+  rig.add(head, G.sph(0.165, 24, 18), A.skin, 0, 0, 0, 0, 0, 0, 0.96, 1.04, 0.98);
+  for (const s of [-1, 1]) rig.add(head, G.sph(0.04, 12, 10), A.skin, 0.157 * s, -0.005, 0.01, 0, 0, 0, 0.45, 0.85, 0.7);
   face(rig, head, A);
   hair(rig, head, torso, body, A, big);
-
-  // ---- outfit details on the torso
   outfit(rig, torso, body, A, big);
 
   // ---- arms holding the gun (pivot at shoulder height for aiming)
   const aim = new THREE.Group();
-  aim.position.set(0, 1.37, 0);
+  aim.position.set(0, 1.4, 0);
   body.add(aim);
   const gunHolder = new THREE.Group();
   gunHolder.position.set(0.08, -0.1, -0.42);
   aim.add(gunHolder);
-  const sleeve = A.style === 'mohawk' ? A.skin : A.outfit;
-  const fore = A.style === 'mohawk' || A.style === 'spiky' ? (A.style === 'mohawk' ? A.skin : A.outfit) : A.outfit;
-  const rS = V(0.28 * big, 0, 0.02), rE = V(0.25 * big, -0.23, -0.15), rH = V(0.09, -0.12, -0.4);
-  const lS = V(-0.28 * big, 0, 0.02), lE = V(-0.25 * big, -0.21, -0.3), lH = V(0.02, -0.07, -0.66);
-  rig.add(aim, G.sph(0.11 * big), A.outfit, rS.x, rS.y + 0.01, rS.z);
-  rig.add(aim, G.sph(0.11 * big), A.outfit, lS.x, lS.y + 0.01, lS.z);
-  rig.limb(aim, rS, rE, 0.08 * big, sleeve); rig.limb(aim, rE, rH, 0.07 * big, fore);
-  rig.limb(aim, lS, lE, 0.08 * big, sleeve); rig.limb(aim, lE, lH, 0.07 * big, fore);
-  rig.add(aim, G.sph(0.08), A.glove, rH.x, rH.y, rH.z, 0, 0, 0, 1, 0.9, 1.2);
-  rig.add(aim, G.sph(0.08), A.glove, lH.x, lH.y, lH.z, 0, 0, 0, 1, 0.9, 1.2);
+  const bare = A.style === 'mohawk';
+  const sleeve = bare ? A.skin : jacket;
+  const rS = V(0.225 * big, 0, 0.02), rE = V(0.22 * big, -0.22, -0.13), rH = V(0.085, -0.12, -0.4);
+  const lS = V(-0.225 * big, 0, 0.02), lE = V(-0.2 * big, -0.2, -0.3), lH = V(0.02, -0.07, -0.64);
+  rig.add(aim, G.sph(0.085 * big, 16, 12), jacket, rS.x, rS.y, rS.z);
+  rig.add(aim, G.sph(0.085 * big, 16, 12), jacket, lS.x, lS.y, lS.z);
+  rig.limb(aim, rS, rE, 0.062 * big, sleeve); rig.limb(aim, rE, rH, 0.054 * big, sleeve);
+  rig.limb(aim, lS, lE, 0.062 * big, sleeve); rig.limb(aim, lE, lH, 0.054 * big, sleeve);
+  rig.add(aim, G.sph(0.055, 14, 10), A.glove, rH.x, rH.y, rH.z, 0, 0, 0, 1, 0.85, 1.25);
+  rig.add(aim, G.sph(0.055, 14, 10), A.glove, lH.x, lH.y, lH.z, 0, 0, 0, 1, 0.85, 1.25);
   // team armband — always readable
-  const band = lS.clone().lerp(lE, 0.45);
+  const band = lS.clone().lerp(lE, 0.5);
   const dir = new THREE.Vector3().subVectors(lE, lS).normalize();
   const m = new THREE.Matrix4().compose(band, new THREE.Quaternion().setFromUnitVectors(_up, dir), _s.set(1, 1, 1));
-  rig.push(aim, G.cyl(0.088 * big, 0.088 * big, 0.06), teamColor, m, true);
-  if (A.style === 'mohawk') {
-    // lightning tattoo glowing on the forearm
-    rig.glow(aim, G.box(0.02, 0.12, 0.02), A.accent, rE.x + 0.06, rE.y - 0.03, rE.z - 0.1, 0.9, 0, 0.5);
-  }
+  rig.push(aim, G.cyl(0.066 * big, 0.066 * big, 0.05, 16), teamColor, m, true);
+  if (bare) rig.glow(aim, G.box(0.015, 0.1, 0.015), A.accent, rE.x + 0.05, rE.y - 0.03, rE.z - 0.1, 0.9, 0, 0.5);
 
-  rig.finish(outlineMaterial(isEnemy ? 0xff2436 : 0x0b2a30, isEnemy ? 0.022 : 0.014));
+  rig.finish(outlineMaterial(isEnemy ? 0xff2436 : 0x0e1a20, isEnemy ? 0.016 : 0.009));
   return { root, body, torso, head, aim, legs, gunHolder, gun: null, muzzle: null, gunId: null, walk: 0 };
 }
 
 function face(rig, head, A) {
   const angry = A.mood === 'angry' || A.mood === 'stern';
   for (const s of [-1, 1]) {
-    rig.add(head, G.sph(0.055), 0xffffff, 0.077 * s, 0.025, -0.162, 0, 0, 0, 0.85, angry ? 0.95 : 1.15, 0.55);
-    rig.flat(head, G.sph(0.03), 0x1d1a24, 0.074 * s, 0.022, -0.19, 0, 0, 0, 1, 1.1, 0.6);
-    rig.glow(head, G.sph(0.011), 0xffffff, 0.066 * s, 0.036, -0.205);
-    // brows
-    const tilt = { angry: 0.42, stern: 0.15, calm: -0.05, kind: -0.25, happy: -0.15, grin: 0.05 }[A.mood] || 0;
-    rig.add(head, G.rbox(0.09, A.style === 'beard' ? 0.035 : 0.024, 0.03, 0.01), A.style === 'medic' ? 0xb8bcc4 : shade(A.hair, 0.8), 0.077 * s, 0.098, -0.175, 0, 0, -tilt * s);
-    // cheeks / freckles
-    if (A.mood === 'happy' || A.mood === 'kind') rig.flat(head, G.sph(0.03), 0xff9a9a, 0.11 * s, -0.045, -0.158, 0, 0, 0, 1, 0.6, 0.4);
-    if (A.style === 'spiky') for (let k = 0; k < 3; k++) rig.flat(head, G.sph(0.009), 0xb0603a, (0.09 + k * 0.02) * s, -0.045 + (k % 2) * 0.014, -0.181, 0, 0, 0, 1, 1, 0.4);
+    rig.flat(head, G.sph(0.038, 14, 10), 0xffffff, 0.058 * s, 0.018, -0.142, 0, 0, 0, 0.82, angry ? 0.9 : 1.08, 0.42);
+    rig.flat(head, G.sph(0.021, 12, 8), 0x1d1a24, 0.056 * s, 0.016, -0.157, 0, 0, 0, 1, 1.1, 0.5);
+    rig.glow(head, G.sph(0.0065, 8, 6), 0xffffff, 0.05 * s, 0.026, -0.166);
+    const tilt = { angry: 0.38, stern: 0.12, calm: -0.05, kind: -0.22, happy: -0.12, grin: 0.04 }[A.mood] || 0;
+    rig.flat(head, G.rbox(0.06, A.style === 'beard' ? 0.022 : 0.016, 0.02, 0.007), A.style === 'medic' ? 0xa8acb4 : shade(A.hair, 0.75), 0.06 * s, 0.075, -0.152, 0, 0, -tilt * s);
+    if (A.mood === 'happy' || A.mood === 'kind') rig.flat(head, G.sph(0.022, 10, 8), 0xf29a96, 0.088 * s, -0.035, -0.135, 0, 0, 0, 1, 0.6, 0.35);
+    if (A.style === 'spiky') for (let k = 0; k < 3; k++) rig.flat(head, G.sph(0.006, 6, 6), 0xb0603a, (0.072 + k * 0.015) * s, -0.035 + (k % 2) * 0.01, -0.152, 0, 0, 0, 1, 1, 0.4);
   }
-  rig.add(head, G.sph(0.034), shade(A.skin, 0.9), 0, -0.035, -0.198, 0, 0, 0, 0.85, 0.9, 1);
-  // mouth by mood
-  const mouthY = -0.105, mz = -0.18;
+  rig.flat(head, G.sph(0.022, 12, 10), shade(A.skin, 0.92), 0, -0.028, -0.16, 0, 0, 0, 0.9, 0.85, 0.9);
+  const my = -0.082, mz = -0.148;
   if (A.mood === 'happy' || A.mood === 'kind' || A.mood === 'calm') {
-    rig.flat(head, G.torus(0.04, 0.011, Math.PI), 0x5a1e1e, 0, mouthY + 0.02, mz, 0, 0, Math.PI, 1, A.mood === 'calm' ? 0.4 : 0.8, 1);
+    rig.flat(head, G.torus(0.03, 0.007, Math.PI), 0x6a2424, 0, my + 0.014, mz, 0, 0, Math.PI, 1, A.mood === 'calm' ? 0.4 : 0.75, 1);
   } else if (A.mood === 'grin') {
-    rig.flat(head, G.rbox(0.1, 0.035, 0.02, 0.012), 0xffffff, 0.01, mouthY, mz - 0.005, 0, 0, -0.08);
-    rig.flat(head, G.rbox(0.11, 0.012, 0.022, 0.005), 0x5a1e1e, 0.01, mouthY - 0.02, mz - 0.006, 0, 0, -0.08);
+    rig.flat(head, G.rbox(0.072, 0.024, 0.014, 0.009), 0xffffff, 0.006, my, mz - 0.002, 0, 0, -0.08);
   } else {
-    rig.flat(head, G.rbox(0.08, 0.016, 0.02, 0.006), 0x5a1e1e, 0, mouthY, mz, 0, 0, A.mood === 'angry' ? 0.1 : 0);
+    rig.flat(head, G.rbox(0.055, 0.011, 0.014, 0.005), 0x6a2424, 0, my, mz, 0, 0, A.mood === 'angry' ? 0.08 : 0);
   }
 }
 
 function hair(rig, head, torso, body, A, big) {
   const H = A.hair;
-  const capGeo = (r, t) => new THREE.SphereGeometry(r, 18, 12, 0, Math.PI * 2, 0, Math.PI * t);
+  const cap = (t) => new THREE.SphereGeometry(0.172, 24, 14, 0, Math.PI * 2, 0, Math.PI * t);
   switch (A.style) {
     case 'hood': {
-      rig.add(head, capGeo(0.208, 0.33), H, 0, 0.02, 0.0, -0.75);
-      // hood: open in front
-      const hood = new THREE.SphereGeometry(0.255, 18, 14, Math.PI * 1.5 + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * 0.78);
-      rig.add(head, hood, A.outfit, 0, 0.02, 0.02, 0, 0, 0, 1, 1.05, 1.05);
-      rig.add(head, G.torus(0.2, 0.035, Math.PI * 1.25), A.outfit2, 0, 0.0, -0.13, 0, 0, Math.PI * 1.375, 1.05, 1.15, 1);
-      // glowing tattoo lines
-      for (const s of [-1, 1]) {
-        rig.glow(head, G.box(0.012, 0.07, 0.01), A.accent, 0.12 * s, -0.04, -0.16, 0.4, 0, 0.3 * s);
-        rig.glow(head, G.box(0.012, 0.04, 0.01), A.accent, 0.145 * s, -0.08, -0.13, 0.4, 0, -0.4 * s);
-      }
-      // long coat flaring from the waist
-      rig.add(body, G.cyl(0.27, 0.36, 0.5, 16, true), A.outfit, 0, 0.72, 0.02, 0, 0, 0, 1, 1, 0.85);
-      rig.add(torso, G.box(0.06, 0.4, 0.02), A.accent, 0.09, 0.25, -0.172, 0, 0, 0, 1, 1, 1, true);
+      rig.add(head, cap(0.36), H, 0, 0.012, 0, 0.5);
+      const hood = new THREE.SphereGeometry(0.205, 24, 16, Math.PI * 1.5 + 0.9, Math.PI * 2 - 1.8, 0, Math.PI * 0.74);
+      rig.add(head, hood, A.outfit, 0, 0.015, 0.02, 0, 0, 0, 1, 1.06, 1.06);
+      rig.add(head, G.torus(0.16, 0.024, Math.PI * 1.2), A.outfit2, 0, 0.0, -0.11, 0, 0, Math.PI * 1.4, 1.02, 1.12, 1);
+      for (const s of [-1, 1]) rig.glow(head, G.box(0.009, 0.05, 0.008), A.accent, 0.095 * s, -0.035, -0.13, 0.4, 0, 0.3 * s);
+      rig.add(body, G.lathe([[0.2, 0.0], [0.24, -0.25], [0.28, -0.46]], 22), A.outfit, 0, 1.02, 0.01, 0, 0, 0, 1, 1, 0.72);
       break;
     }
-    case 'medic': {
-      rig.add(head, capGeo(0.215, 0.5), H, 0, 0.01, 0.02, -0.25);
-      for (const s of [-1, 1]) rig.add(head, G.sph(0.1), H, 0.155 * s, -0.06, 0.03, 0, 0, 0, 0.6, 1.25, 1.1);
-      rig.add(head, G.sph(0.17), H, 0, -0.03, 0.09, 0, 0, 0, 1.15, 1.1, 0.8);
-      // round glasses
-      for (const s of [-1, 1]) rig.flat(head, G.torus(0.045, 0.008), 0x2a3a3a, 0.077 * s, 0.025, -0.2);
-      rig.flat(head, G.box(0.05, 0.008, 0.008), 0x2a3a3a, 0, 0.03, -0.205);
+    case 'medic':
+      rig.add(head, cap(0.5), H, 0, 0.012, 0.012, 0.42);
+      rig.add(head, G.sph(0.17, 22, 16), H, 0, -0.035, 0.065, 0, 0, 0, 1.04, 0.92, 0.74);
+      for (const s of [-1, 1]) rig.flat(head, G.torus(0.033, 0.006, Math.PI * 2), 0x2a3a3a, 0.058 * s, 0.018, -0.168);
+      rig.flat(head, G.box(0.04, 0.006, 0.006), 0x2a3a3a, 0, 0.022, -0.17);
       break;
-    }
-    case 'afro': {
-      const blobs = [[0, 0.14, 0.02, 0.15], [0.12, 0.1, 0.03, 0.13], [-0.12, 0.1, 0.03, 0.13], [0.15, -0.01, 0.06, 0.11], [-0.15, -0.01, 0.06, 0.11],
-        [0, 0.1, 0.13, 0.15], [0.09, 0.02, 0.14, 0.12], [-0.09, 0.02, 0.14, 0.12], [0.06, 0.2, -0.04, 0.1], [-0.06, 0.2, -0.04, 0.1], [0, 0.22, 0.07, 0.12]];
-      for (const [x, y, z, r] of blobs) rig.add(head, G.sph(r, 12, 10), H, x * 1.05, y, z);
-      // goggles pushed up on the forehead
-      rig.add(head, G.torus(0.212, 0.018), 0x3a2a1a, 0, 0.1, 0, Math.PI / 2 - 0.25);
+    case 'afro':
+      rig.add(head, G.sph(0.21, 24, 18), H, 0, 0.085, 0.05, 0, 0, 0, 1.08, 0.88, 1.0);
+      rig.add(head, G.torus(0.172, 0.014, Math.PI * 2), 0x3a2a1a, 0, 0.075, 0, Math.PI / 2 - 0.2);
       for (const s of [-1, 1]) {
-        rig.add(head, G.cyl(0.045, 0.045, 0.04), 0x3a2a1a, 0.07 * s, 0.135, -0.19, Math.PI / 2 - 0.25);
-        rig.glow(head, G.cyl(0.035, 0.035, 0.01), 0xffa040, 0.07 * s, 0.136, -0.212, Math.PI / 2 - 0.25);
+        rig.add(head, G.cyl(0.034, 0.034, 0.03, 16), 0x3a2a1a, 0.055 * s, 0.11, -0.15, Math.PI / 2 - 0.25);
+        rig.glow(head, G.cyl(0.026, 0.026, 0.006, 16), 0xffa040, 0.055 * s, 0.112, -0.166, Math.PI / 2 - 0.25);
       }
       break;
-    }
     case 'spiky': {
-      rig.add(head, capGeo(0.212, 0.45), H, 0, 0.01, 0.01, -0.3);
-      const spikes = [[0, 0.2, -0.05, -0.5, 0], [0.09, 0.19, -0.02, -0.4, -0.4], [-0.09, 0.19, -0.02, -0.4, 0.4], [0.05, 0.2, 0.08, 0.3, -0.3],
-        [-0.05, 0.2, 0.08, 0.3, 0.3], [0, 0.17, 0.14, 0.8, 0], [0.15, 0.12, 0.05, 0, -0.9], [-0.15, 0.12, 0.05, 0, 0.9]];
-      for (const [x, y, z, rx, rz] of spikes) rig.add(head, G.cone(0.065, 0.2, 6), H, x, y, z, rx, 0, rz);
+      rig.add(head, cap(0.44), H, 0, 0.012, 0.01, 0.35);
+      const spikes = [[0, 0.16, -0.03, -0.55, 0], [0.075, 0.15, 0.0, -0.3, -0.45], [-0.075, 0.15, 0.0, -0.3, 0.45], [0.04, 0.15, 0.09, 0.45, -0.25], [-0.04, 0.15, 0.09, 0.45, 0.25]];
+      for (const [x, y, z, rx, rz] of spikes) rig.add(head, G.cone(0.06, 0.17, 12), H, x, y, z, rx, 0, rz);
       break;
     }
-    case 'mohawk': {
-      rig.add(head, capGeo(0.204, 0.42), shade(A.skin, 0.75), 0, 0.005, 0.0, -0.3);
-      for (let i = 0; i < 6; i++) {
-        const a = -0.6 + i * 0.36;
-        rig.add(head, G.rbox(0.05, 0.13, 0.08, 0.02), H, 0, Math.cos(a) * 0.21, Math.sin(a) * 0.21, a, 0, 0);
-      }
-      // headphones around the neck
-      rig.add(torso, G.torus(0.13, 0.02), 0x222228, 0, 0.55, 0.0, Math.PI / 2 + 0.3);
-      for (const s of [-1, 1]) rig.add(torso, G.cyl(0.05, 0.05, 0.04), 0x222228, 0.13 * s, 0.53, -0.04, 0, 0, Math.PI / 2);
-      rig.glow(torso, G.cyl(0.035, 0.035, 0.042), A.accent, 0.13, 0.53, -0.04, 0, 0, Math.PI / 2);
+    case 'mohawk':
+      rig.add(head, cap(0.42), shade(A.skin, 0.8), 0, 0.004, 0, 0.3);
+      rig.add(head, G.lathe([[0.001, -0.1], [0.04, -0.06], [0.045, 0.05], [0.03, 0.12], [0.001, 0.14]], 12), H, 0, 0.17, 0.02, Math.PI / 2 - 0.15, 0, 0, 0.55, 1.35, 1);
+      rig.add(torso, G.torus(0.105, 0.016, Math.PI * 2), 0x222228, 0, 0.53, 0.0, Math.PI / 2 + 0.3);
+      for (const s of [-1, 1]) rig.add(torso, G.cyl(0.04, 0.04, 0.035, 16), 0x222228, 0.105 * s, 0.51, -0.035, 0, 0, Math.PI / 2);
+      rig.glow(torso, G.cyl(0.028, 0.028, 0.037, 16), A.accent, 0.105, 0.51, -0.035, 0, 0, Math.PI / 2);
       break;
-    }
-    case 'beard': {
-      // bald head, big beard and moustache
-      rig.add(head, G.sph(0.16), H, 0, -0.1, -0.07, 0, 0, 0, 1.15, 1.0, 0.85);
-      rig.add(head, G.rbox(0.13, 0.04, 0.05, 0.02), H, 0, -0.07, -0.19);
-      rig.add(head, G.sph(0.21), shade(A.skin, 1.05), 0, 0.012, 0.01, 0, 0, 0, 0.98, 0.97, 0.95);
+    case 'beard':
+      rig.add(head, G.sph(0.135, 20, 14), H, 0, -0.075, -0.055, 0, 0, 0, 1.1, 1.0, 0.85);
+      rig.flat(head, G.rbox(0.1, 0.028, 0.035, 0.013), H, 0, -0.058, -0.158);
       break;
-    }
   }
 }
 
 function outfit(rig, torso, body, A, big) {
   switch (A.style) {
     case 'medic':
-      rig.add(torso, G.rbox(0.36, 0.08, 0.36, 0.03), A.outfit, 0, 0.5, 0.0);
-      rig.add(torso, G.box(0.1, 0.03, 0.02), A.outfit2, 0, 0.32, 0.18, 0, 0, 0, 1, 1, 1, true);
-      rig.add(torso, G.box(0.03, 0.1, 0.02), A.outfit2, 0, 0.32, 0.18, 0, 0, 0, 1, 1, 1, true);
-      rig.add(torso, G.box(0.03, 0.42, 0.01), A.outfit2, -0.05, 0.27, -0.172);
-      rig.add(torso, G.rbox(0.2, 0.18, 0.08, 0.03), 0xe8e8e8, -0.32, 0.12, 0.0); // med pouch
+      rig.add(torso, G.torus(0.095, 0.03, Math.PI * 2), A.outfit, 0, 0.47, 0, Math.PI / 2);
+      rig.glow(torso, G.box(0.08, 0.024, 0.01), A.outfit2, 0, 0.3, 0.158);
+      rig.glow(torso, G.box(0.024, 0.08, 0.01), A.outfit2, 0, 0.3, 0.158);
+      rig.flat(torso, G.box(0.016, 0.38, 0.01), A.outfit2, 0, 0.24, -0.158);
       break;
     case 'afro':
-      rig.add(torso, G.torus(0.17, 0.06), A.outfit2, 0, 0.5, 0, Math.PI / 2);
-      rig.add(torso, G.box(0.02, 0.42, 0.01), 0x8a6a1a, 0, 0.27, -0.172);
-      rig.add(torso, G.rbox(0.54, 0.08, 0.36, 0.03), shade(A.outfit, 0.8), 0, 0.03, 0);
+      rig.add(torso, G.torus(0.12, 0.045, Math.PI * 2), A.outfit2, 0, 0.47, 0, Math.PI / 2);
+      rig.flat(torso, G.box(0.014, 0.36, 0.01), 0x8a6a1a, 0, 0.24, -0.158);
       break;
     case 'spiky':
-      for (const s of [-1, 1]) rig.add(torso, G.box(0.08, 0.18, 0.04), A.outfit, 0.13 * s, 0.53, -0.08, -0.3, 0, 0.25 * s);
-      rig.add(torso, G.box(0.18, 0.4, 0.01), 0x2a2a2e, 0, 0.27, -0.172); // shirt under the open jacket
-      rig.glow(torso, G.box(0.03, 0.3, 0.01), A.accent, 0.12, 0.25, -0.175, 0, 0, 0.2);
+      for (const s of [-1, 1]) rig.add(torso, G.rbox(0.07, 0.12, 0.03, 0.012), A.outfit, 0.085 * s, 0.48, -0.06, -0.3, 0, 0.3 * s);
+      rig.flat(torso, G.box(0.13, 0.34, 0.01), 0x2a2a2e, 0, 0.25, -0.158);
       break;
     case 'mohawk':
-      rig.add(torso, G.box(0.03, 0.42, 0.01), A.accent, 0, 0.27, -0.172, 0, 0, 0, 1, 1, 1, true);
-      rig.add(torso, G.rbox(0.54, 0.06, 0.36, 0.02), 0x2a2a2e, 0, 0.03, 0);
+      rig.glow(torso, G.box(0.018, 0.36, 0.01), A.accent, 0, 0.24, -0.158);
       break;
     case 'beard':
-      // heavy plate carrier with pouches
-      rig.add(torso, G.rbox(0.56 * big, 0.42, 0.4 * big, 0.08), A.outfit2, 0, 0.29, 0);
-      for (let i = 0; i < 3; i++) rig.add(torso, G.rbox(0.13, 0.13, 0.08, 0.03), shade(A.outfit2, 1.25), (i - 1) * 0.15, 0.16, -0.23 * big);
-      rig.add(torso, G.rbox(0.36, 0.42, 0.18, 0.06), A.outfit2, 0, 0.27, 0.27);
-      rig.glow(torso, G.box(0.18, 0.025, 0.01), A.accent, 0, 0.42, -0.232 * big);
+      rig.add(torso, G.rbox(0.33, 0.22, 0.06, 0.03), shade(A.outfit2, 1.2), 0, 0.27, -0.155 * big);
+      rig.glow(torso, G.box(0.14, 0.018, 0.01), A.accent, 0, 0.36, -0.188 * big);
       break;
     default:
-      rig.add(torso, G.box(0.02, 0.42, 0.01), A.outfit2, 0, 0.27, -0.172);
+      rig.flat(torso, G.box(0.016, 0.38, 0.01), A.outfit2, 0, 0.24, -0.158);
   }
-  // belt pouch on everyone
-  rig.add(body, G.rbox(0.12, 0.1, 0.07, 0.02), A.outfit2, 0.2 * big, 0.92, -0.12);
+  rig.add(body, G.cyl(0.185 * big, 0.185 * big, 0.045, 22), shade(A.outfit2, 0.8), 0, 1.0, 0, 0, 0, 0, 1, 1, 0.73);
 }
 
 // Poses the rig for this frame.

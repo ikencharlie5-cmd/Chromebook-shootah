@@ -57,7 +57,7 @@ export const AGENTS = [
     id: 'vesper', name: 'Vesper', role: 'Sentinel',
     bio: 'Keeps the team alive and locks down lanes.',
     suit: 0xe6e3da, suit2: 0x4f5864, accent: 0x5dffb0, look: 'halo',
-    skin: 0xf2cdb4, hair: 0xd8dce4, outfit: 0xf2f2ee, outfit2: 0x5dd6a0, pants: 0x3a6a72, shoes: 0xe8e8e8, glove: 0xf2f2ee, mood: 'kind', style: 'medic',
+    skin: 0xf2cdb4, hair: 0xc9a2dc, outfit: 0xf2f2ee, outfit2: 0x5dd6a0, pants: 0x3a6a72, shoes: 0xe8e8e8, glove: 0xf2f2ee, mood: 'kind', style: 'medic',
     kit: {
       q: { type: 'wall', price: 300, max: 1 },
       e: { type: 'heal', free: 1, max: 1 },

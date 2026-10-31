@@ -56,7 +56,8 @@ are bought in the buy menu and carry over between rounds. Ultimates charge from 
 | Jolt | Blue mohawk, headphones, lightning tattoo | Duelist | Flashbang ×2 | Dash ×2 | Mend (heal) | Overdrive — speed, fire rate, accuracy |
 | Rook | Bald, big beard, heavy plate carrier | Initiator | Smoke | Flashbang ×2 | Incendiary | Blackout — blind everyone who sees you |
 
-Agents are cel-shaded cartoon people. Enemies always have a **red outline** and your team wears a teal armband.
+Agents are clean cel-shaded cartoon people (slightly big heads, smooth shapes). Enemies always have a
+**red outline** and your team wears a teal armband.
 
 - **Smokes** land where you aim and block vision (for bots too).
 - **Flashes** pop after a moment and blind enemies who are looking at them — turn away!
@@ -69,7 +70,8 @@ Agents are cel-shaded cartoon people. Enemies always have a **red outline** and 
 All maps are compact two-site layouts built for 3v3, and the map is picked at random each match. They have
 height to fight over — balconies and raised platforms with stairs, 1m ledges you can jump onto, raised bridges —
 plus buildings you can walk through, windows you can see and shoot through (and vault, if you crouch-jump),
-archways, real-time shadows (Medium/High graphics) and lots of props.
+curved archways and arched windows, rounded walls and cover, domes / hangar roofs / gabled roofs, cornices,
+balconies, rocks, bushes and puddles, real-time shadows (Medium/High graphics) and lots of props.
 
 | Map | Theme |
 | --- | --- |

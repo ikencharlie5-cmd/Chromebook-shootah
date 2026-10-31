@@ -1,5 +1,5 @@
 import * as THREE from '../lib/three.module.min.js';
-import { buildTheme, addParticles, letterTexture, mat, Geo } from './theme.js';
+import { buildTheme, addParticles, letterTexture, mat, Geo, scatterGround } from './theme.js';
 
 export const CELL = 3;
 const LOW_H = 1.1;
@@ -191,7 +191,7 @@ export class GameMap {
       for (let z = m.z0; z <= m.z1; z++) for (let x = m.x0; x <= m.x1; x++) heightGrid[z * W + x] = h;
       const bx = { minX: wx(m.x0), maxX: wx(m.x1 + 1), minZ: wz(m.z0), maxZ: wz(m.z1 + 1), minY: 0, maxY: h };
       m.color = th.wallColors[Math.floor(rng() * th.wallColors.length)];
-      b.addBox('wall', { ...bx, minY: -1.6 }, m.color, th.wallUv, 0.35);
+      b.addRoundBox('wall', { ...bx, minY: -1.6 }, m.color, th.wallUv, 0.35, 0.22);
       this.boxes.push({ ...bx, maxY: 60, kind: 'wall' });
       this.addTrim(b, bx, th, rng);
     }
@@ -213,36 +213,36 @@ export class GameMap {
         const minX = wx(x), minZ = wz(z), maxX = minX + CELL, maxZ = minZ + CELL;
         const cell = { minX, maxX, minZ, maxZ };
 
-        // --- windows and archways sit in wall lines
+        // --- windows and archways sit in wall lines: walls with a real (curved) opening cut through
         if (c === 'w' || c === 'n') {
           const top = neighborWallH(x, z), col = wallColorNear(x, z);
           heightGrid[z * W + x] = top;
           b.addBox('floor', { ...cell, minY: -1.6, maxY: 0 }, th.floorColor, 1 / 3);
-          const alongX = this.ch(x - 1, z) === '#' || this.ch(x + 1, z) === '#' || this.ch(x - 1, z) === 'w' || this.ch(x + 1, z) === 'w';
-          // the wall runs along X when its neighbours left/right are walls; thickness is the full cell
+          const alongX = '#wn'.includes(this.ch(x - 1, z)) || '#wn'.includes(this.ch(x + 1, z));
+          const round = th.archStyle !== 'square';
+          const geo = c === 'n'
+            ? openingWall(top, 1.2, 0, 1.9, round ? 'arch' : 'rect', 3.1)
+            : openingWall(top, round ? 0.8 : 0.9, SILL, round ? 1.75 : 2.5, round ? 'arch' : 'rect', 2.5);
+          if (!alongX) geo.rotateY(Math.PI / 2);
+          geo.translate(minX + CELL / 2, 0, minZ + CELL / 2);
+          b.addGeo('wall', geo, col, th.wallUv, 0.35, -1.6);
+          const tc = th.trimColor ?? 0xe8e2d6;
+          const side = c === 'n' ? 0.3 : round ? 0.7 : 0.6;
+          // colliders: the two sides of the opening, plus sill / lintel
+          const post = (lo, hi) => alongX
+            ? { minX: lo, maxX: hi, minZ, maxZ }
+            : { minZ: lo, maxZ: hi, minX, maxX };
+          const a0 = alongX ? minX : minZ, a1 = alongX ? maxX : maxZ;
+          this.boxes.push({ ...post(a0, a0 + side), minY: 0, maxY: 60, kind: 'wall' });
+          this.boxes.push({ ...post(a1 - side, a1), minY: 0, maxY: 60, kind: 'wall' });
           if (c === 'w') {
-            b.addBox('wall', { ...cell, minY: -1.6, maxY: SILL }, col, th.wallUv, 0.35);
-            b.addBox('wall', { ...cell, minY: WIN_TOP, maxY: top }, col, th.wallUv);
             this.boxes.push({ ...cell, minY: 0, maxY: SILL, kind: 'wall' });
             this.boxes.push({ ...cell, minY: WIN_TOP, maxY: 60, kind: 'wall' });
-            // frame and sill trim
-            const tc = th.trimColor ?? 0xe8e2d6;
-            b.addBox('plain', { ...cell, minY: SILL, maxY: SILL + 0.08, ...grow(cell, alongX, 0.08) }, tc);
-            b.addBox('plain', { ...cell, minY: WIN_TOP - 0.08, maxY: WIN_TOP, ...grow(cell, alongX, 0.08) }, tc);
+            b.addRoundBox('plain', { ...grow(cell, alongX, 0.12), ...(alongX ? { minX: minX + side - 0.1, maxX: maxX - side + 0.1 } : { minZ: minZ + side - 0.1, maxZ: maxZ - side + 0.1 }), minY: SILL - 0.08, maxY: SILL + 0.04 }, tc, 1, 0, 0.04);
           } else {
-            b.addBox('wall', { ...cell, minY: ARCH_TOP, maxY: top }, col, th.wallUv);
             this.boxes.push({ ...cell, minY: ARCH_TOP, maxY: 60, kind: 'wall' });
-            // posts at both ends of the opening
-            const post = 0.32;
-            const tc = th.trimColor ?? 0xe8e2d6;
-            if (alongX) {
-              b.addBox('plain', { minX, maxX: minX + post, minZ: minZ - 0.05, maxZ: maxZ + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
-              b.addBox('plain', { minX: maxX - post, maxX, minZ: minZ - 0.05, maxZ: maxZ + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
-            } else {
-              b.addBox('plain', { minZ, maxZ: minZ + post, minX: minX - 0.05, maxX: maxX + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
-              b.addBox('plain', { minZ: maxZ - post, maxZ, minX: minX - 0.05, maxX: maxX + 0.05, minY: 0, maxY: ARCH_TOP + 0.2 }, tc);
-            }
-            b.addBox('plain', { ...grow(cell, alongX, 0.06), minY: ARCH_TOP - 0.05, maxY: ARCH_TOP + 0.25 }, tc);
+            // keystone
+            b.addRoundBox('plain', { ...grow({ minX: minX + 1.3, maxX: maxX - 1.3, minZ: minZ + 1.3, maxZ: maxZ - 1.3 }, alongX, 1.42), minY: 2.85, maxY: 3.35 }, tc, 1, 0, 0.05);
           }
           continue;
         }
@@ -299,7 +299,7 @@ export class GameMap {
             if (BLOCKING.has(nc) && nc !== 'c' && nc !== 'C' && nc !== '~') continue;
             if (STAIRS[nc] || (LEVEL[nc] ?? 0) >= lvl) continue;
             const ex = dx ? (dx > 0 ? maxX : minX) : (minX + maxX) / 2, ez = dz ? (dz > 0 ? maxZ : minZ) : (minZ + maxZ) / 2;
-            b.add('plain', Geo.box, mat(ex - dx * 0.06, lvl + 0.06, ez - dz * 0.06, 0, dx ? 0.14 : CELL, 0.12, dz ? 0.14 : CELL), th.trimColor ?? 0xe8e2d6);
+            b.add('plain', Geo.cyl, mat(ex - dx * 0.06, lvl + 0.02, ez - dz * 0.06, dx ? Math.PI / 2 : 0, 0.2, CELL, 0.2, 0, Math.PI / 2), th.trimColor ?? 0xe8e2d6);
             if (lvl >= 2 && th.railings !== false) {
               b.add('plain', Geo.box, mat(ex - dx * 0.08, lvl + 0.95, ez - dz * 0.08, 0, dx ? 0.08 : CELL, 0.08, dz ? 0.08 : CELL), th.railColor ?? 0x3a3f48);
               for (let k = 0; k < 4; k++) {
@@ -335,7 +335,7 @@ export class GameMap {
           const inset = low ? 0.25 : 0.15;
           const h = low ? LOW_H : HIGH_H;
           const bx = { minX: minX + inset, maxX: maxX - inset, minZ: minZ + inset, maxZ: maxZ - inset, minY: 0, maxY: h };
-          b.addBox(low ? 'low' : 'high', bx, spec.colors[Math.floor(rng() * spec.colors.length)], 1 / (CELL - inset * 2), 0.25);
+          b.addRoundBox(low ? 'low' : 'high', bx, spec.colors[Math.floor(rng() * spec.colors.length)], 1 / (CELL - inset * 2), 0.25, low ? 0.14 : 0.12);
           this.boxes.push({ ...bx, kind: 'cover' });
           th.coverDetail?.(b, bx, low, rng);
           if (spec.glow) {
@@ -379,6 +379,7 @@ export class GameMap {
     const ext = { cx: 0, cz: 0, rx: W * CELL / 2, rz: H * CELL / 2 };
     const ctx = { b, rng, faces, floorCells, waterCells, indoorCells, cellCenter, blocks: this.blocks, scene, map: this, waterY: WATER_Y, ...ext };
     th.decorate?.(ctx);
+    scatterGround(ctx, th.ground);
     th.backdrop?.({ ...ctx, b: bb });
 
     if (th.clouds) {
@@ -436,6 +437,19 @@ export class GameMap {
     const cx = (bx.minX + bx.maxX) / 2, cz = (bx.minZ + bx.maxZ) / 2;
     const w = bx.maxX - bx.minX, d = bx.maxZ - bx.minZ, h = bx.maxY;
     const color = t.colors[Math.floor(rng() * t.colors.length)];
+    const tc = th.trimColor ?? 0xe8e2d6;
+    // base plinth and floor-line bands so walls aren't flat slabs
+    b.addRoundBox('plain', { minX: bx.minX - 0.08, maxX: bx.maxX + 0.08, minZ: bx.minZ - 0.08, maxZ: bx.maxZ + 0.08, minY: -0.2, maxY: 0.42 }, th.plinthColor ?? shade(th.wallColors[0], 0.75), 1, 0, 0.08);
+    for (let y = 3.3; y < h - 1.2; y += 3.3) {
+      b.addRoundBox('plain', { minX: bx.minX - 0.1, maxX: bx.maxX + 0.1, minZ: bx.minZ - 0.1, maxZ: bx.maxZ + 0.1, minY: y - 0.08, maxY: y + 0.08 }, tc, 1, 0, 0.06);
+    }
+    // rounded corner columns
+    if (th.pilasters !== false) {
+      for (const [x, z] of [[bx.minX, bx.minZ], [bx.maxX, bx.minZ], [bx.minX, bx.maxZ], [bx.maxX, bx.maxZ]]) {
+        b.add('plain', Geo.cyl, mat(x, h / 2, z, 0, 0.42, h, 0.42), th.pilasterColor ?? tc);
+      }
+    }
+    th.roof?.(b, bx, rng, { cx, cz, w, d, h });
     if (t.glow) {
       b.add('glow', Geo.box, mat(cx, h - 0.25, cz, 0, w + 0.08, 0.12, d + 0.08), color);
       b.add('plain', Geo.box, mat(cx, h + 0.15, cz, 0, w + 0.3, 0.3, d + 0.3), 0x22222e);
@@ -649,6 +663,35 @@ export class GameMap {
     }
     void th;
   }
+}
+
+// A 3m wall section with an opening cut through it (shape in X/Y, extruded across Z).
+// hw: half width of the hole, y0: bottom of hole, ys: where the arch springs (or top for 'rect').
+function openingWall(top, hw, y0, ys, style, holeTop) {
+  const H = CELL / 2;
+  const shape = new THREE.Shape();
+  shape.moveTo(-H, -1.6); shape.lineTo(H, -1.6); shape.lineTo(H, top); shape.lineTo(-H, top); shape.lineTo(-H, -1.6);
+  const hole = new THREE.Path();
+  if (style === 'arch') {
+    hole.moveTo(-hw, y0);
+    hole.lineTo(-hw, ys);
+    hole.absarc(0, ys, hw, Math.PI, 0, true);
+    hole.lineTo(hw, y0);
+    hole.lineTo(-hw, y0);
+  } else {
+    const r = 0.18, t = holeTop;
+    hole.moveTo(-hw, y0);
+    hole.lineTo(-hw, t - r);
+    hole.quadraticCurveTo(-hw, t, -hw + r, t);
+    hole.lineTo(hw - r, t);
+    hole.quadraticCurveTo(hw, t, hw, t - r);
+    hole.lineTo(hw, y0);
+    hole.lineTo(-hw, y0);
+  }
+  shape.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(shape, { depth: CELL, bevelEnabled: false, curveSegments: 12 });
+  g.translate(0, 0, -H);
+  return g;
 }
 
 // Expand a cell box sideways (across the wall's thickness) for trims.

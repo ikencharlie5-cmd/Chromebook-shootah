@@ -75,6 +75,35 @@ export class Batcher {
     this.lists.get(key).push(g);
   }
 
+  // Any geometry, with world-space UVs and vertex colour (+ optional AO toward minY).
+  addGeo(key, geo, color, uvScale = 1 / 3, ao = 0, aoY = -Infinity) {
+    const g = geo.index ? geo.toNonIndexed() : geo;
+    const p = g.attributes.position, nrm = g.attributes.normal;
+    const uv = new Float32Array(p.count * 2), col = new Float32Array(p.count * 3);
+    const c = new THREE.Color(color);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i)), nz = Math.abs(nrm.getZ(i));
+      if (ny >= nx && ny >= nz) { uv[i * 2] = x * uvScale; uv[i * 2 + 1] = z * uvScale; }
+      else if (nx >= nz) { uv[i * 2] = z * uvScale; uv[i * 2 + 1] = y * uvScale; }
+      else { uv[i * 2] = x * uvScale; uv[i * 2 + 1] = y * uvScale; }
+      const shade = ao && y <= aoY + 0.01 && ny < 0.5 ? 1 - ao : 1;
+      col[i * 3] = c.r * shade; col[i * 3 + 1] = c.g * shade; col[i * 3 + 2] = c.b * shade;
+    }
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k);
+    if (!this.lists.has(key)) this.lists.set(key, []);
+    this.lists.get(key).push(g);
+  }
+
+  // Box with rounded edges and flat faces.
+  addRoundBox(key, b, color, uvScale = 1 / 3, ao = 0, r = 0.15) {
+    const g = roundBoxGeo(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ, r);
+    g.translate((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
+    this.addGeo(key, g, color, uvScale, ao, b.minY);
+  }
+
   build(parent, materials) {
     const meshes = [];
     for (const [key, geos] of this.lists) {
@@ -106,6 +135,32 @@ export class Batcher {
     this.lists.clear();
     return meshes;
   }
+}
+
+// Rounded box whose subdivisions sit near the edges, so faces stay flat and only the edges curve.
+const rbCache = new Map();
+export function roundBoxGeo(w, h, d, r) {
+  r = Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001);
+  const key = `${w.toFixed(3)},${h.toFixed(3)},${d.toFixed(3)},${r.toFixed(3)}`;
+  if (rbCache.has(key)) return rbCache.get(key).clone();
+  const g = new THREE.BoxGeometry(w, h, d, 5, 5, 5);
+  const p = g.attributes.position, v = new THREE.Vector3(), c = new THREE.Vector3();
+  const remap = (x, half) => {
+    // snap the 6 grid lines to [-h, -h+.35r, -h+r, h-r, h-.35r, h]
+    const t = Math.round((x / half + 1) * 2.5);
+    return [-half, -half + 0.35 * r, -half + r, half - r, half - 0.35 * r, half][t];
+  };
+  const hx = w / 2, hy = h / 2, hz = d / 2;
+  for (let i = 0; i < p.count; i++) {
+    v.set(remap(p.getX(i), hx), remap(p.getY(i), hy), remap(p.getZ(i), hz));
+    c.set(Math.max(-hx + r, Math.min(hx - r, v.x)), Math.max(-hy + r, Math.min(hy - r, v.y)), Math.max(-hz + r, Math.min(hz - r, v.z)));
+    const dv = v.clone().sub(c);
+    if (dv.lengthSq() > 1e-10) v.copy(c).add(dv.normalize().multiplyScalar(r));
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  rbCache.set(key, g);
+  return g.clone();
 }
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -630,12 +685,111 @@ const Q = {
   },
 };
 
+
+// ---- curved / organic pieces ------------------------------------------------
+
+const hemi = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+const halfCyl = new THREE.CylinderGeometry(1, 1, 1, 18, 1, false, 0, Math.PI);
+const rockGeo = new THREE.IcosahedronGeometry(0.5, 0);
+const discGeo = new THREE.CircleGeometry(1, 22);
+
+const R = {
+  rock(b, x, y, z, s, color, rng, cap) {
+    b.add('plain', rockGeo, mat(x, y + s * 0.18, z, rng() * 6, s * (0.9 + rng() * 0.5), s * (0.55 + rng() * 0.35), s * (0.9 + rng() * 0.4), rng(), rng()), color);
+    if (cap) b.add('plain', G.sphere, mat(x, y + s * 0.42, z, 0, s * 0.8, s * 0.22, s * 0.7), cap);
+  },
+  bush(b, x, y, z, s, color, rng) {
+    for (let i = 0; i < 3; i++) {
+      const a = rng() * Math.PI * 2;
+      b.add('plain', G.sphere, mat(x + Math.cos(a) * s * 0.3, y + s * (0.32 + rng() * 0.15), z + Math.sin(a) * s * 0.3, 0, s * (0.7 + rng() * 0.3), s * 0.6, s * (0.7 + rng() * 0.3)), i ? color : new THREE.Color(color).multiplyScalar(1.15));
+    }
+  },
+  puddle(b, x, y, z, s, rng) {
+    b.add('puddle', discGeo, mat(x, y + 0.012, z, rng() * 3, s * (0.8 + rng() * 0.6), 1, s * (0.5 + rng() * 0.4), -Math.PI / 2), 0xffffff);
+  },
+  drift(b, x, z, s, rng) {
+    b.add('plain', G.sphere, mat(x, 0, z, rng() * 3, s * 2.2, s * 0.5, s * 1.1), 0xf4f8ff);
+  },
+  dome(b, cx, h, cz, r, color, tip) {
+    b.add('plain', G.cyl, mat(cx, h + 0.2, cz, 0, r * 2.1, 0.4, r * 2.1), color);
+    b.add('plain', hemi, mat(cx, h + 0.4, cz, 0, r, r * 0.9, r), color);
+    if (tip) { b.add('plain', G.cyl6, mat(cx, h + 0.4 + r * 0.9 + 0.3, cz, 0, 0.12, 0.6, 0.12), tip); b.add('glow', G.sphere, mat(cx, h + 0.4 + r * 0.9 + 0.7, cz, 0, 0.25), 0xffd27a); }
+  },
+  hangar(b, bx, h, color, alongX) {
+    const w = bx.maxX - bx.minX, d = bx.maxZ - bx.minZ, cx = (bx.minX + bx.maxX) / 2, cz = (bx.minZ + bx.maxZ) / 2;
+    const r = (alongX ? d : w) / 2, len = alongX ? w : d;
+    // half cylinder lying along the long axis
+    b.add('plain', halfCyl, mat(cx, h, cz, alongX ? 0 : Math.PI / 2, r, len, r * 0.75, 0, Math.PI / 2), color);
+  },
+  gable(b, bx, h, color, alongX) {
+    const w = bx.maxX - bx.minX, d = bx.maxZ - bx.minZ;
+    const half = (alongX ? d : w) / 2 + 0.35, rise = Math.min(2.6, half * 0.75), len = (alongX ? w : d) + 0.5;
+    const shape = new THREE.Shape();
+    shape.moveTo(-half, 0); shape.lineTo(half, 0); shape.lineTo(0, rise); shape.lineTo(-half, 0);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: len, bevelEnabled: false });
+    g.translate(0, 0, -len / 2);
+    if (alongX) g.rotateY(Math.PI / 2);
+    g.translate((bx.minX + bx.maxX) / 2, h + 0.25, (bx.minZ + bx.maxZ) / 2);
+    b.add('plain', g, null, color);
+  },
+  tank(b, x, h, z, color) {
+    for (const [dx, dz] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) b.add('plain', G.cyl6, mat(x + dx, h + 0.6, z + dz, 0, 0.1, 1.2, 0.1), 0x3a3f48);
+    b.add('plain', G.cyl, mat(x, h + 2.1, z, 0, 2.0, 1.8, 2.0), color);
+    b.add('plain', G.cone, mat(x, h + 3.3, z, 0, 2.1, 0.6, 2.1), shade(color, 0.8));
+  },
+  balcony(b, f, y, color, rail, rng) {
+    const ry = Math.atan2(f.nx, f.nz);
+    const fx = f.x + f.nx * 0.45, fz = f.z + f.nz * 0.45;
+    b.add('plain', G.box, mat(fx, y, fz, ry, 2.2, 0.16, 0.9), color);
+    b.add('plain', G.box, mat(f.x + f.nx * 0.03, y + 1.1, f.z + f.nz * 0.03, ry, 1.0, 2.0, 0.04), 0x2a2420);
+    b.add('plain', G.box, mat(f.x + f.nx * 0.88, y + 0.95, f.z + f.nz * 0.88, ry, 2.2, 0.06, 0.06), rail);
+    for (let k = 0; k < 7; k++) {
+      const o = (k - 3) * 0.35;
+      b.add('plain', G.cyl6, mat(fx + Math.cos(ry) * o + f.nx * 0.43, y + 0.5, fz - Math.sin(ry) * o + f.nz * 0.43, 0, 0.04, 0.85, 0.04), rail);
+    }
+    if (rng() < 0.6) b.add('plain', G.sphere, mat(fx + Math.cos(ry) * 0.7, y + 0.3, fz - Math.sin(ry) * 0.7, 0, 0.4, 0.35, 0.4), rng() < 0.5 ? 0x3f8a3a : 0xe84a6a);
+  },
+};
+
+function shade(hex, k) { return new THREE.Color(hex).multiplyScalar(k).getHex(); }
+
+// Rocks, bushes, puddles and drifts that break up floors and wall lines.
+export function scatterGround(ctx, spec) {
+  if (!spec) return;
+  const { b, rng, faces, floorCells, cellCenter, map } = ctx;
+  const ok = (c) => c.ch !== 'T' && c.ch !== 'D' && !'^v<>,'.includes(c.ch);
+  for (const f of faces) {
+    if (f.base) continue;
+    const along = (rng() - 0.5) * 2.4;
+    const x = f.x + f.nx * 0.45 + f.nz * along, z = f.z + f.nz * 0.45 - f.nx * along;
+    const r = rng();
+    if (spec.rocks && r < spec.rockChance) R.rock(b, x, 0, z, 0.5 + rng() * 0.6, spec.rocks[Math.floor(rng() * spec.rocks.length)], rng, spec.rockCap);
+    else if (spec.bushes && r < spec.rockChance + spec.bushChance) R.bush(b, x, 0, z, 0.6 + rng() * 0.5, spec.bushes[Math.floor(rng() * spec.bushes.length)], rng);
+    else if (spec.drifts && r < spec.rockChance + 0.25) R.drift(b, x, z, 0.5 + rng() * 0.5, rng);
+  }
+  for (const c of floorCells) {
+    if (!ok(c)) continue;
+    const p = cellCenter(c.x, c.z), y = map.cellHeight(c.x, c.z);
+    if (spec.puddles && rng() < spec.puddles) R.puddle(b, p.x + (rng() - 0.5) * 1.6, y, p.z + (rng() - 0.5) * 1.6, 0.6 + rng() * 0.6, rng);
+    if (spec.pebbles && rng() < spec.pebbles) for (let i = 0; i < 4; i++) R.rock(b, p.x + (rng() - 0.5) * 2.4, y, p.z + (rng() - 0.5) * 2.4, 0.12 + rng() * 0.12, spec.rocks[0], rng);
+  }
+  if (spec.balconies) {
+    for (const f of faces) if (f.top >= 7 && rng() < spec.balconies) R.balcony(b, f, f.base + 3.45, spec.balconyColor, spec.railColor, rng);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Themes
 // ---------------------------------------------------------------------------
 
 export const THEMES = {
   neon: {
+    archStyle: 'square', pilasterColor: 0x2a2a3a,
+    ground: { rocks: [0x55586a], rockChance: 0.04, puddles: 0.22, pebbles: 0, balconies: 0.12, balconyColor: 0x3a3a4e, railColor: 0xff3fd2 },
+    roof(b, bx, rng, r) {
+      if (rng() < 0.35 && r.w >= 3 && r.d >= 3) R.tank(b, r.cx, r.h, r.cz, 0x6a5a7a);
+      else if (rng() < 0.3) { b.add('plain', G.box, mat(r.cx, r.h + 1.6, r.cz, rng() * 3, 4, 2.2, 0.15), 0x1a1a24); b.add('glow', G.box, mat(r.cx, r.h + 1.6, r.cz, 0, 3.6, 1.8, 0.17), [0xff3fd2, 0x3ff3ff, 0xffd23f][Math.floor(rng() * 3)]); }
+    },
     sky: ['#05030f', '#2a1048', '#0b0716'], stars: true, moon: { color: 0xdfe6ff, size: 14, dir: [0.4, 0.5, -0.8] },
     fog: [0x24163e, 40, 200], hemi: [0x9a8bff, 0x4a3a66, 1.7], sun: [0xb0c4ff, 1.0, [30, 60, 40]],
     wall: 'facade', wallUv: 1 / 6, wallColors: [0x6a6a8a, 0x5a6a86, 0x7a6a86, 0x5a607a, 0x72729a], wallHeight: [7, 14],
@@ -705,6 +859,11 @@ export const THEMES = {
   },
 
   desert: {
+    archStyle: 'arch', pilasters: false,
+    ground: { rocks: [0xd2a676, 0xc89a6a, 0xb88a5a], rockChance: 0.18, bushes: [0x8a9a4a, 0x6a7a3a], bushChance: 0.08, pebbles: 0.12 },
+    roof(b, bx, rng, r) {
+      if (rng() < 0.35 && Math.min(r.w, r.d) >= 3) R.dome(b, r.cx, r.h, r.cz, Math.min(r.w, r.d) * 0.36, rng() < 0.5 ? 0xf2d8ae : 0x4aa8b8, 0xc9952a);
+    },
     sky: ['#4f86d0', '#ffc07a', '#f6d0a0'], sun: [0xffd0a0, 2.4, [-50, 40, 70]], sunDisc: { color: 0xffe0a8, size: 18 },
     fog: [0xf2c79a, 60, 260], hemi: [0xfff0d8, 0xa8805a, 1.6],
     wall: 'sandstone', wallUv: 1 / 3, wallColors: [0xf2cfa0, 0xeac294, 0xf6d8ae, 0xe2b888], wallHeight: [5, 10],
@@ -764,6 +923,13 @@ export const THEMES = {
   },
 
   snow: {
+    archStyle: 'square',
+    ground: { rocks: [0x7a8290, 0x8a929e], rockChance: 0.12, rockCap: 0xf4f8ff, drifts: true, pebbles: 0.05 },
+    roof(b, bx, rng, r) {
+      const alongX = r.w >= r.d;
+      if (rng() < 0.45 && Math.min(r.w, r.d) >= 3 && Math.max(r.w, r.d) >= 6) R.hangar(b, bx, r.h, rng() < 0.5 ? 0xb4bec8 : 0x96aec8, alongX);
+      else if (rng() < 0.3 && r.w >= 3 && r.d >= 3) R.tank(b, r.cx, r.h, r.cz, 0xd8dee6);
+    },
     sky: ['#8fa6c4', '#d8e2ee', '#eef3f8'], sun: [0xe8f0ff, 1.3, [40, 50, 30]],
     fog: [0xdbe4ee, 30, 170], hemi: [0xf0f6ff, 0xa8b4c4, 1.6],
     wall: 'metal', wallUv: 1 / 3, wallColors: [0xc4ccd6, 0xb4bec8, 0xd8946e, 0x96aec8, 0x7aa08a], wallHeight: [6, 11],
@@ -821,6 +987,12 @@ export const THEMES = {
   },
 
   jungle: {
+    archStyle: 'arch',
+    ground: { rocks: [0x6a7a6a, 0x7a8a72], rockChance: 0.14, rockCap: 0x3d7d32, bushes: [0x2f6b2a, 0x3d7d32, 0x4a8a3a], bushChance: 0.3, puddles: 0.1, pebbles: 0.06 },
+    roof(b, bx, rng, r) {
+      for (let i = 0; i < 2; i++) if (rng() < 0.6) R.bush(b, bx.minX + rng() * r.w, r.h + 0.2, bx.minZ + rng() * r.d, 1.2 + rng(), [0x2f6b2a, 0x3d7d32][i], rng);
+      if (rng() < 0.25 && Math.min(r.w, r.d) >= 3) R.dome(b, r.cx, r.h, r.cz, Math.min(r.w, r.d) * 0.3, 0x8a948c, null);
+    },
     sky: ['#4f7a6a', '#a9c9a0', '#c8dcc0'], sun: [0xfff2c8, 1.4, [20, 70, 40]],
     fog: [0x8fb39a, 22, 140], hemi: [0xd8ffd8, 0x3a4a30, 1.1],
     wall: 'mossConcrete', wallUv: 1 / 3, wallColors: [0x9aa39a, 0x8a948c, 0xa0a8a0, 0x7f8a82], wallHeight: [6, 10],
@@ -876,6 +1048,11 @@ export const THEMES = {
   },
 
   canals: {
+    archStyle: 'arch', pilasters: false,
+    ground: { rocks: [0xc8bca8], rockChance: 0.0, bushes: [0x3f8a3a, 0x4a9a42], bushChance: 0.1, puddles: 0.06, balconies: 0.22, balconyColor: 0xe6dccc, railColor: 0x2a2a2a },
+    roof(b, bx, rng, r) {
+      if (Math.min(r.w, r.d) >= 3 && Math.max(r.w, r.d) <= 30) R.gable(b, bx, r.h, 0xb8573a, r.w >= r.d);
+    },
     sky: ['#3f86d6', '#a9d4f5', '#e6f2fa'], sun: [0xfff0d6, 1.8, [50, 60, -30]], sunDisc: { color: 0xfff6e0, size: 10 }, clouds: true,
     fog: [0xcfe3f2, 60, 260], hemi: [0xeaf4ff, 0x8a6a50, 1.1],
     wall: 'stucco', wallUv: 1 / 3, wallColors: [0xe8a46a, 0xe8c26a, 0xd98a7a, 0xf0d8a8, 0xc9705a, 0xe6b8a0], wallHeight: [7, 13],
@@ -995,6 +1172,7 @@ export function buildTheme(themeId, map, scene, seed, opts = {}) {
       ? new THREE.MeshPhongMaterial({ map: TEX[th.floor](rng), vertexColors: true, shininess: 60, specular: 0x666688 })
       : new THREE.MeshLambertMaterial({ map: TEX[th.floor](rng), vertexColors: true }),
     indoor: new THREE.MeshLambertMaterial({ map: TEX.wood(rng), vertexColors: true }),
+    puddle: new THREE.MeshPhongMaterial({ color: th.puddleColor ?? 0x2a2e38, shininess: 120, specular: 0xaaaacc, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }),
     beam: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }),
     poster: new THREE.MeshLambertMaterial({ map: posterAtlas(rng), vertexColors: true }),
     low: new THREE.MeshLambertMaterial({ map: TEX[th.low.tex](rng), vertexColors: true }),

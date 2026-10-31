@@ -177,7 +177,7 @@ export class ViewModel {
     const rh = hand(group, m, 1, knife ? 1.5 : 1.3);
     rh.position.set(0.005, -0.045, 0.02);
     rh.rotation.set(0.25, 0, Math.PI / 2 - 0.25);
-    forearm(group, V(0.012, -0.075, 0.07), knife ? V(0.12, -0.3, 0.42) : V(0.15, -0.32, 0.4), m);
+    forearm(group, V(0.012, -0.075, 0.07), knife ? V(0.2, -0.36, 0.42) : pistol ? V(0.3, -0.4, 0.38) : V(0.22, -0.36, 0.42), m);
     if (!knife) {
       // left hand under the handguard (or cupping the pistol grip)
       const lz = pistol ? 0.015 : -0.26;
@@ -185,7 +185,7 @@ export class ViewModel {
       lh.position.set(-0.03, pistol ? -0.06 : -0.035, lz);
       lh.rotation.set(0.1, 0, pistol ? -Math.PI / 2 + 0.4 : -Math.PI / 2 + 0.15);
       const wrist = V(-0.045, -0.075, lz + 0.05);
-      forearm(group, wrist, pistol ? V(-0.2, -0.32, 0.36) : V(-0.27, -0.3, 0.1), m);
+      forearm(group, wrist, pistol ? V(-0.55, -0.42, 0.3) : V(-0.55, -0.38, 0.14), m);
     }
     return { group, muzzle };
   }
