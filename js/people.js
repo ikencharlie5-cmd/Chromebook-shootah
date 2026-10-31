@@ -1,4 +1,4 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171522';
+import * as THREE from '../lib/three.module.min.js?v=20261031172740';
 
 // Chunky cartoon people: big heads with faces, hair, outfits. Each body part group is merged
 // into one cel-shaded mesh (+ an outline shell) to keep draw calls low.
@@ -413,6 +413,13 @@ export function animateCharacter(m, s, dt) {
   // keep the gun and head pointed where the character aims
   m.aim.rotation.x = lerpTo(m.aim.rotation.x, s.pitch * 0.85 - m.torso.rotation.x - (s.action ? 0.7 : 0) + Math.sin(2 * q) * 0.02 * m.move, k);
   m.aim.rotation.y = -m.torso.rotation.y - m.hips.rotation.y;
+  if (s.swing > 0) {
+    // melee: big sideways sweep of the arms (or a forward lunge for heavy stabs)
+    const k = Math.sin(Math.max(0, Math.min(1, 1 - s.swing / 0.35)) * Math.PI);
+    m.aim.rotation.y += k * 1.1 * s.swingSide;
+    m.aim.rotation.x -= k * 0.35;
+    m.torso.rotation.y += k * 0.35 * s.swingSide;
+  }
   m.aim.rotation.z = -m.torso.rotation.z * 0.6;
   m.head.rotation.x = lerpTo(m.head.rotation.x, s.pitch * 0.45 - m.torso.rotation.x * 0.8, k);
   m.head.rotation.y = -(m.torso.rotation.y + m.hips.rotation.y) * 0.8;

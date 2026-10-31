@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171522';
-import { buildGun, buildFlash, glow } from './models.js?v=20261031171522';
-import { toonGradient, outlineMaterial } from './people.js?v=20261031171522';
+import * as THREE from '../lib/three.module.min.js?v=20261031172740';
+import { buildGun, buildFlash, glow } from './models.js?v=20261031172740';
+import { toonGradient, outlineMaterial } from './people.js?v=20261031172740';
 
 const toonCache = new Map();
 function toon(color) {
@@ -119,6 +119,46 @@ function grasp(parent, m, o) {
   return pc.clone().addScaledVector(radial, 0.02).add(o.wrist || new THREE.Vector3());
 }
 
+// Knife animations: keyframes of [time 0..1, dx, dy, dz, rotX, rotY, rotZ] relative to the resting pose.
+const mirror = (keys) => keys.map(([t, x, y, z, rx, ry, rz]) => [t, -x, y, z, rx, -ry, -rz]);
+const COMBAT_R = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [0.15, 0.06, 0.26, 0.04, 0.55, -0.35, -1.25],    // wind up high on the right
+  [0.38, -0.2, 0.08, -0.26, 0.1, 0.75, 0.9],       // rip across the middle of the screen
+  [0.55, -0.36, -0.1, -0.12, -0.25, 1.05, 1.25],   // follow through low left
+  [1, 0, 0, 0, 0, 0, 0],
+];
+const KARAMBIT_R = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [0.14, 0.05, 0.27, 0.03, 0.5, -0.3, -1.6],
+  [0.4, -0.22, 0.07, -0.25, -0.1, 0.85, 1.9],      // blade rolls through the cut
+  [0.58, -0.36, -0.1, -0.1, -0.3, 1.1, 2.6],
+  [1, 0, 0, 0, 0, 0, 0],
+];
+const KNIFE_ANIMS = {
+  combat: {
+    slashR: { dur: 0.42, keys: COMBAT_R }, slashL: { dur: 0.42, keys: mirror(COMBAT_R) },
+    heavy: { dur: 0.95, keys: [[0, 0, 0, 0, 0, 0, 0], [0.3, 0.03, 0.07, 0.16, 0.55, 0, 0.25], [0.48, -0.04, -0.02, -0.34, -0.3, 0, 0.1], [0.66, -0.04, -0.02, -0.3, -0.3, 0, 0.1], [1, 0, 0, 0, 0, 0, 0]] },
+    equip: { dur: 0.45, keys: [[0, 0, -0.25, 0.1, -2.6, 0, 0], [0.7, 0, 0.02, 0, 0.15, 0, 0], [1, 0, 0, 0, 0, 0, 0]] },
+    flourish: { dur: 0.9, keys: [[0, 0, 0, 0, 0, 0, 0], [0.3, -0.06, 0.08, 0.05, 0.6, -0.9, 0.3], [0.7, -0.06, 0.08, 0.05, 0.6, -0.9, 0.3], [1, 0, 0, 0, 0, 0, 0]] },
+  },
+  karambit: {
+    slashR: { dur: 0.4, keys: KARAMBIT_R }, slashL: { dur: 0.4, keys: mirror(KARAMBIT_R) },
+    heavy: { dur: 0.9, keys: [[0, 0, 0, 0, 0, 0, 0], [0.25, 0.04, 0.08, 0.14, 0.5, 0, 0], [0.5, -0.04, -0.02, -0.33, -0.25, 0, Math.PI * 2], [0.7, -0.03, -0.02, -0.28, -0.2, 0, Math.PI * 2], [1, 0, 0, 0, 0, 0, Math.PI * 2]] },
+    equip: { dur: 0.6, keys: [[0, 0, -0.2, 0.05, -0.6, 0, -Math.PI * 2], [0.8, 0, 0.02, 0, 0.1, 0, 0], [1, 0, 0, 0, 0, 0, 0]] },
+    flourish: { dur: 0.7, keys: [[0, 0, 0, 0, 0, 0, 0], [0.5, -0.02, 0.06, 0, 0.3, 0, Math.PI], [1, 0, 0, 0, 0, 0, Math.PI * 2]] },
+  },
+};
+const smooth = (k) => k * k * (3 - 2 * k);
+function samplePose(keys, t, out) {
+  let i = 0;
+  while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
+  const a = keys[i], b = keys[i + 1];
+  const k = smooth(Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0] || 1))));
+  for (let j = 1; j < 7; j++) out[j - 1] = a[j] + (b[j] - a[j]) * k;
+  return out;
+}
+
 // First-person weapon + agent-styled arms, rendered in its own scene on top of the world.
 export class ViewModel {
   constructor(aspect) {
@@ -141,6 +181,18 @@ export class ViewModel {
     this.swayX = 0; this.swayY = 0;
     this.equipT = 0; this.equipDur = 0.5;
     this.knifeSwing = 0;
+    this.knifeAnim = null;
+    this.knifeSide = 1;
+    this.flourishT = 6;
+    this.pose = [0, 0, 0, 0, 0, 0];
+    // curved swoosh trail for slashes
+    this.swoosh = new THREE.Mesh(
+      new THREE.RingGeometry(0.33, 0.37, 32, 1, Math.PI * 0.2, Math.PI * 0.6),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    this.swoosh.visible = false;
+    this.scene.add(this.swoosh);
+    this.swooshT = 0;
     this.castT = 0;
     this.agent = null;
 
@@ -265,6 +317,11 @@ export class ViewModel {
     this.holder.add(this.current.group);
     this.current.muzzle.add(this.flash);
     this.equipT = equipTime; this.equipDur = Math.max(equipTime, 0.01);
+    if (id === 'knife' && equipTime > 0) {
+      const model = this.skins?.knife?.model === 'karambit' ? 'karambit' : 'combat';
+      this.knifeAnim = { ...KNIFE_ANIMS[model].equip, t: 0, type: 'equip' };
+      this.equipT = 0;
+    }
     // per-weapon placement: long guns sit lower and further out so sights don't block the view
     // [x, y, z, yaw]: the gun runs from the lower right toward the centre so you see its side
     const OFF = {
@@ -280,7 +337,23 @@ export class ViewModel {
     this.kickRot += 0.08 * amount;
   }
 
-  swing() { this.knifeSwing = 1; }
+  // kind: 'light' (alternating slashes) | 'heavy' (stab)
+  swing(kind = 'light') {
+    const model = this.skins?.knife?.model === 'karambit' ? 'karambit' : 'combat';
+    let type = 'heavy';
+    if (kind === 'light') { type = this.knifeSide > 0 ? 'slashR' : 'slashL'; this.knifeSide *= -1; }
+    this.knifeAnim = { ...KNIFE_ANIMS[model][type], t: 0, type };
+    this.flourishT = 8;
+    if (type !== 'heavy') {
+      // swoosh sweeps the way the blade travels
+      this.swooshT = 0.26; // first 0.06s is wind-up, trail shows during the cut
+      this.swooshDir = type === 'slashR' ? 1 : -1;
+      this.swoosh.visible = true;
+      this.swoosh.position.set(0, -0.05, -0.42);
+      this.swoosh.rotation.set(0.25, 0, type === 'slashR' ? 0.55 : Math.PI - 0.55);
+      this.swoosh.material.color.set(0xffffff).lerp(new THREE.Color(this.agent?.accent ?? 0xffffff), 0.35);
+    }
+  }
 
   cast(color) {
     this.castT = 0.5;
@@ -344,22 +417,42 @@ export class ViewModel {
       this.orb.visible = p < 0.55;
     } else this.castArm.visible = false;
 
-    let swingRot = 0;
-    if (this.knifeSwing > 0) {
-      this.knifeSwing = Math.max(0, this.knifeSwing - dt * 4);
-      swingRot = Math.sin(this.knifeSwing * Math.PI) * 1.1;
+    const swingRot = 0;
+    const pose = this.pose;
+    pose.fill(0);
+    if (this.current.id === 'knife') {
+      // idle flourish every so often when standing still
+      this.flourishT -= dt;
+      if (!this.knifeAnim && this.flourishT <= 0 && s.speed < 0.5 && s.visible) {
+        const model = this.skins?.knife?.model === 'karambit' ? 'karambit' : 'combat';
+        this.knifeAnim = { ...KNIFE_ANIMS[model].flourish, t: 0, type: 'flourish' };
+        this.flourishT = 7 + Math.random() * 5;
+      }
+      if (this.knifeAnim) {
+        this.knifeAnim.t += dt / this.knifeAnim.dur;
+        samplePose(this.knifeAnim.keys, Math.min(1, this.knifeAnim.t), pose);
+        if (this.knifeAnim.t >= 1) this.knifeAnim = null;
+      }
+    } else this.knifeAnim = null;
+    if (this.swooshT > 0) {
+      this.swooshT -= dt;
+      const k = 1 - this.swooshT / 0.2;
+      this.swoosh.material.opacity = k < 0 ? 0 : Math.sin(Math.min(1, k * 1.15) * Math.PI) * 0.45;
+      if (k > 0) this.swoosh.rotation.z += this.swooshDir * dt * -9;
+      this.swoosh.visible = this.swooshT > 0 && k > 0 && s.visible;
     }
 
     const g = this.current.group;
+    void swingRot;
     g.position.set(
-      this.base.x + bx + this.swayX - swingRot * 0.1 + this.sprint * 0.015,
-      this.base.y + by + this.swayY - drop - s.crouch * 0.01 - land + airLift - this.sprint * 0.025,
-      this.base.z + this.kickZ + this.sprint * 0.02,
+      this.base.x + bx + this.swayX + this.sprint * 0.015 + pose[0],
+      this.base.y + by + this.swayY - drop - s.crouch * 0.01 - land + airLift - this.sprint * 0.025 + pose[1],
+      this.base.z + this.kickZ + this.sprint * 0.02 + pose[2],
     );
     g.rotation.set(
-      this.kickRot - tilt - this.sprint * 0.08 + Math.cos(this.bob * 2) * 0.01 * this.bobAmt,
-      (this.baseYaw || 0) + swingRot * 0.8 + this.sprint * 0.12,
-      swingRot * 0.6 + this.roll + Math.sin(this.bob) * 0.02 * this.bobAmt,
+      this.kickRot - tilt - this.sprint * 0.08 + Math.cos(this.bob * 2) * 0.01 * this.bobAmt + pose[3],
+      (this.baseYaw || 0) + this.sprint * 0.12 + pose[4],
+      this.roll + Math.sin(this.bob) * 0.02 * this.bobAmt + pose[5],
     );
   }
 }

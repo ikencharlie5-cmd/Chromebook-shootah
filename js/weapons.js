@@ -7,7 +7,8 @@
 export const WEAPONS = {
   knife: {
     id: 'knife', name: 'Knife', slot: 'melee', price: 0, melee: true,
-    dmg: { head: 75, body: 50, leg: 50 }, rpm: 110, auto: true, range: 2.4,
+    dmg: { head: 75, body: 50, leg: 50 }, rpm: 140, auto: true, range: 2.4,
+    heavyDmg: { head: 150, body: 75, leg: 75 }, heavyCool: 1.0, heavyRange: 2.1,
     speedMul: 1.12, equip: 0.25, sound: 'knife', kind: 'knife',
   },
   pip: {

@@ -1,18 +1,18 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171522';
-import { GameMap } from './map.js?v=20261031171522';
-import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031171522';
-import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031171522';
-import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031171522';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031171522';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031171522';
-import { BotBrain, DIFFICULTY } from './bots.js?v=20261031171522';
-import { Abilities } from './abilities.js?v=20261031171522';
-import { Effects } from './effects.js?v=20261031171522';
-import { ViewModel } from './viewmodel.js?v=20261031171522';
-import { Hud } from './hud.js?v=20261031171522';
-import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031171522';
-import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031171522';
-import { NetMixin } from './netgame.js?v=20261031171522';
+import * as THREE from '../lib/three.module.min.js?v=20261031172740';
+import { GameMap } from './map.js?v=20261031172740';
+import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031172740';
+import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031172740';
+import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031172740';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031172740';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031172740';
+import { BotBrain, DIFFICULTY } from './bots.js?v=20261031172740';
+import { Abilities } from './abilities.js?v=20261031172740';
+import { Effects } from './effects.js?v=20261031172740';
+import { ViewModel } from './viewmodel.js?v=20261031172740';
+import { Hud } from './hud.js?v=20261031172740';
+import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031172740';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031172740';
+import { NetMixin } from './netgame.js?v=20261031172740';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -676,6 +676,7 @@ export class Game {
     this.updateBody(p, dt, fx, fz);
 
     const w = p.weapon;
+    if (w.def.melee && inp.pressed('Mouse2') && !menuBlock && !p.action && this.phase !== 'buy') this.tryShoot(p, true);
     if (w.def.scope) {
       if (inp.pressed('Mouse2') && !menuBlock && w.reloadT <= 0 && p.switchT <= 0) p.scoped = !p.scoped;
       if (w.reloadT > 0 || p.switchT > 0) p.scoped = false;
@@ -770,18 +771,20 @@ export class Game {
       c.castT <= 0.25 && (w.def.melee || w.mag > 0);
   }
 
-  tryShoot(c) {
+  tryShoot(c, heavy = false) {
     if (!this.canFire(c)) return false;
     const w = c.weapon, d = w.def;
-    w.cool = 60 / d.rpm * (c.overdriveT > 0 ? 0.8 : 1);
+    heavy = heavy && d.melee;
+    w.cool = (heavy ? d.heavyCool : 60 / d.rpm) * (c.overdriveT > 0 ? 0.8 : 1);
     if (!c.isPlayer && !d.auto) w.cool = Math.max(w.cool, rand(0.22, 0.38));
     w.sinceShot = 0;
     const dirs = [];
 
     if (d.melee) {
       dirs.push(dirFromAngles(c.yaw, c.pitch, new THREE.Vector3()));
-      if (c.isPlayer) this.viewmodel.swing();
-      this.sound.knife(c.isPlayer ? null : c.pos);
+      if (c.isPlayer) this.viewmodel.swing(heavy ? 'heavy' : 'light');
+      this.sound.knife(c.isPlayer ? null : c.pos, heavy);
+      c.swingT = heavy ? 0.6 : 0.35; c.swingSide = -(c.swingSide || 1);
     } else {
       w.mag--;
       const rec = recoilOffset(d, w.spray);
@@ -810,12 +813,12 @@ export class Game {
       }
     }
     if (c.isPlayer && !d.melee) { this.stats.shots++; if (this.practice) this.practice.shots++; }
-    this.fireTraces(c, d, dirs);
+    this.fireTraces(c, d, dirs, heavy);
     if (this.isClient && c.isPlayer) {
       const r4 = (v) => Math.round(v * 10000) / 10000;
       // what the host clock was for the enemies we were looking at (we draw them ~80ms behind)
       const ht = (this.hostTime ?? 0) + (this.time - (this.hostTimeAt ?? this.time)) - 0.08;
-      this.out.shots.push({ w: d.id, ht: Math.round(ht * 1000) / 1000, d: dirs.map((v) => [r4(v.x), r4(v.y), r4(v.z)]) });
+      this.out.shots.push({ w: d.id, hv: heavy ? 1 : 0, ht: Math.round(ht * 1000) / 1000, d: dirs.map((v) => [r4(v.x), r4(v.y), r4(v.z)]) });
     }
     return true;
   }
@@ -827,12 +830,12 @@ export class Game {
     const w = c.inv[slot], d = w.def;
     if (!d.melee) { if (w.mag <= 0) return; w.mag--; w.sinceShot = 0; }
     const dirs = s.d.slice(0, 12).map((a) => new THREE.Vector3(a[0], a[1], a[2]).normalize());
-    if (d.melee) this.sound.knife(c.pos);
+    if (d.melee) { this.sound.knife(c.pos, !!s.hv); c.swingT = s.hv ? 0.6 : 0.35; c.swingSide = -(c.swingSide || 1); }
     else {
       if (c.model?.flash) this.effects.muzzleFlash(c.model.flash);
       this.sound.shot(d.sound, c.pos);
     }
-    this.fireTraces(c, d, dirs);
+    this.fireTraces(c, d, dirs, d.melee && !!s.hv);
   }
 
   muzzleOf(c) {
@@ -845,9 +848,10 @@ export class Game {
   }
 
   // Traces shots: visuals everywhere, damage only where the match is simulated (offline / host).
-  fireTraces(c, d, dirs) {
+  fireTraces(c, d, dirs, heavy = false) {
     const eye = new THREE.Vector3(c.pos.x, c.pos.y + c.eyeHeight, c.pos.z);
-    const maxT = d.melee ? d.range : 200;
+    const maxT = d.melee ? (heavy ? d.heavyRange : d.range) : 200;
+    const table = heavy ? d.heavyDmg : d.dmg;
     const muzzle = d.melee ? null : this.muzzleOf(c);
     const hits = new Map(), pts = [];
     const r2 = (v) => Math.round(v * 100) / 100;
@@ -855,7 +859,7 @@ export class Game {
       const hit = this.trace(c, eye, dir, maxT);
       if (!d.melee && k < 3 && (Math.random() < 0.7 || c.isPlayer)) this.effects.tracer(muzzle, hit.point);
       if (hit.entity) {
-        let dmg = d.dmg[hit.part];
+        let dmg = table[hit.part];
         if (d.pellets) dmg *= clamp(1 - (hit.t - d.closeRange) / (d.farRange - d.closeRange) * 0.85, 0.15, 1);
         else if (d.falloff && hit.t > d.falloff[0]) dmg *= d.falloff[1];
         if (!d.melee) this.effects.blood(hit.point, dir);
@@ -871,7 +875,7 @@ export class Game {
     });
     if (this.isClient) return;
     for (const [victim, h] of hits) this.applyDamage(victim, c, h.dmg, d.melee ? h.part : h.head ? 'head' : 'body', d.name, h.dir);
-    this.emit({ e: 'sh', c: c.id, w: d.id, m: d.melee ? 1 : 0, pts });
+    this.emit({ e: 'sh', c: c.id, w: d.id, m: d.melee ? 1 : 0, hv: heavy ? 1 : 0, pts });
     for (const o of this.combatants) {
       if (o.human || !o.alive || o.team === c.team) continue;
       if (o.pos.distanceTo(c.pos) < 55) this.brain.hear(o, c.pos, 1);
@@ -1278,7 +1282,9 @@ export class Game {
         speed: Math.hypot(c.vel.x, c.vel.z), vx: c.vel.x, vz: c.vel.z, yaw: c.yaw,
         crouch: c.crouch, pitch: c.pitch, walking: c.walking,
         action: !!c.action, onGround: c.onGround, hit: c.hitT > 0 ? c.hitT / 0.22 : 0,
+        swing: c.swingT > 0 ? c.swingT : 0, swingSide: c.swingSide || 1,
       }, dt);
+      if (c.swingT > 0) c.swingT -= dt;
       if (c.hitT > 0) c.hitT -= dt;
       if (c.marker) {
         const show = c.revealUntil > this.time;

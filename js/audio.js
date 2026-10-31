@@ -103,14 +103,26 @@ export class Sound {
     this.tone(o, t, 'sine', s.thump * 1.6, s.thump * 0.5, s.gain * 0.9, s.decay * 0.8);
   }
 
-  knife(pos = null) {
+  // knife whoosh: a noise sweep (heavier and lower for stabs)
+  knife(pos = null, heavy = false) {
     if (!this.ctx) return;
-    const sp = this.spatial(pos, 15); if (!sp) return;
-    this.noise(this.out(sp), this.ctx.currentTime, 0.15, 'bandpass', 4500, 2, 0.25, 0.12);
+    const sp = this.spatial(pos, 18); if (!sp) return;
+    const t = this.ctx.currentTime, o = this.out(sp);
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf; src.loop = true;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 1.6;
+    f.frequency.setValueAtTime(heavy ? 500 : 900, t);
+    f.frequency.exponentialRampToValueAtTime(heavy ? 1800 : 4200, t + (heavy ? 0.25 : 0.14));
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(heavy ? 0.5 : 0.4, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + (heavy ? 0.32 : 0.2));
+    src.connect(f); f.connect(g); g.connect(o);
+    src.start(t, Math.random() * 0.5, 0.4);
+    if (heavy) this.tone(o, t + 0.12, 'sine', 160, 70, 0.25, 0.12);
   }
 
-  // Footsteps by movement (run / walk / crouch) and surface.
-  // Your own steps play quietly in the centre; other players' steps are positional.
   footstep(pos = null, mode = 'run', surface = 'stone', self = false) {
     if (!this.ctx) return;
     const range = mode === 'run' ? 28 : mode === 'walk' ? 7 : 4;

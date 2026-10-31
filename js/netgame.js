@@ -1,7 +1,7 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031171522';
-import { makeWeaponState } from './weapons.js?v=20261031171522';
-import { applyMovement } from './entities.js?v=20261031171522';
-import { wrapAngle, yawTo } from './util.js?v=20261031171522';
+import * as THREE from '../lib/three.module.min.js?v=20261031172740';
+import { makeWeaponState } from './weapons.js?v=20261031172740';
+import { applyMovement } from './entities.js?v=20261031172740';
+import { wrapAngle, yawTo } from './util.js?v=20261031172740';
 
 // Multiplayer glue mixed into Game.
 //   Host: simulates the whole match (bots + every player), applies remote players' inputs,
@@ -285,7 +285,7 @@ export const NetMixin = {
         const c = C(ev.c);
         if (!c || c === p) return;   // our own shots were already drawn
         const muzzle = this.muzzleOf(c);
-        if (ev.m) { this.sound.knife(c.pos); return; }
+        if (ev.m) { this.sound.knife(c.pos, !!ev.hv); c.swingT = ev.hv ? 0.6 : 0.35; c.swingSide = -(c.swingSide || 1); return; }
         if (c.model?.flash) this.effects.muzzleFlash(c.model.flash);
         const def = c.inv.primary?.def.id === ev.w ? c.inv.primary.def : c.inv.secondary?.def.id === ev.w ? c.inv.secondary.def : null;
         this.sound.shot(def?.sound || 'rifle', c.pos);
