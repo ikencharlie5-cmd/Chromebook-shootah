@@ -200,6 +200,85 @@ export class Sound {
     notes.forEach((f, i) => this.tone(o, t + i * 0.12, 'triangle', f, f, 0.2, 0.25));
   }
 
+  // ---- ambience & music ----
+
+  // Looping background sound for a map theme.
+  ambient(kind) {
+    if (!this.ctx) return;
+    this.stopAmbient();
+    const ctx = this.ctx, t = ctx.currentTime;
+    const bus = ctx.createGain();
+    bus.gain.setValueAtTime(0.0001, t);
+    bus.gain.exponentialRampToValueAtTime(1, t + 2);
+    bus.connect(this.master);
+    const nodes = [bus];
+    const loopNoise = (type, freq, q, gain) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = gain;
+      src.connect(f); f.connect(g); g.connect(bus);
+      src.start();
+      nodes.push(src);
+      return { f, g };
+    };
+    const lfo = (param, rate, depth) => {
+      const o = ctx.createOscillator(); o.frequency.value = rate;
+      const d = ctx.createGain(); d.gain.value = depth;
+      o.connect(d); d.connect(param); o.start();
+      nodes.push(o);
+    };
+    const spec = {
+      neon: () => { loopNoise('bandpass', 3200, 0.6, 0.05); loopNoise('lowpass', 200, 0.7, 0.05); },             // rain + city hum
+      desert: () => { const w = loopNoise('bandpass', 500, 0.8, 0.035); lfo(w.f.frequency, 0.08, 250); lfo(w.g.gain, 0.13, 0.02); },
+      snow: () => { const w = loopNoise('bandpass', 700, 1.2, 0.045); lfo(w.f.frequency, 0.1, 400); lfo(w.g.gain, 0.07, 0.03); },
+      jungle: () => { loopNoise('lowpass', 900, 0.5, 0.025); this.chirps = setInterval(() => this.chirp(bus), 900); },
+      canals: () => { const w = loopNoise('lowpass', 420, 1.5, 0.05); lfo(w.g.gain, 0.3, 0.025); this.chirps = setInterval(() => { if (Math.random() < 0.3) this.chirp(bus, 2200); }, 1500); },
+    }[kind];
+    spec?.();
+    this.amb = nodes;
+  }
+
+  chirp(dest, base = 2800) {
+    if (!this.ctx || Math.random() < 0.4) return;
+    const t = this.ctx.currentTime, f = base + Math.random() * 1500;
+    const pan = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+    const g = this.ctx.createGain(); g.gain.value = 0.5;
+    if (pan) { pan.pan.value = Math.random() * 2 - 1; g.connect(pan); pan.connect(dest); } else g.connect(dest);
+    for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) this.tone(g, t + i * 0.09, 'sine', f, f * 1.25, 0.04, 0.07);
+  }
+
+  stopAmbient() {
+    clearInterval(this.chirps);
+    if (!this.amb) return;
+    const [bus, ...rest] = this.amb;
+    const t = this.ctx.currentTime;
+    bus.gain.cancelScheduledValues(t);
+    bus.gain.setValueAtTime(bus.gain.value, t);
+    bus.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    setTimeout(() => { for (const n of rest) { try { n.stop(); } catch { /* ignore */ } } bus.disconnect(); }, 700);
+    this.amb = null;
+  }
+
+  // Soft synth pad + arpeggio for the lobby.
+  lobbyMusic(on) {
+    if (!this.ctx) return;
+    if (!on) { clearInterval(this.musicTimer); this.musicTimer = null; return; }
+    if (this.musicTimer || this.musicOff) return;
+    const chords = [[220, 277, 330], [196, 247, 294], [175, 220, 262], [196, 247, 294]];
+    let step = 0;
+    const play = () => {
+      const t = this.ctx.currentTime, ch = chords[Math.floor(step / 8) % chords.length];
+      const o = this.out({ gain: 0.18, pan: 0 });
+      if (step % 8 === 0) for (const f of ch) this.tone(o, t, 'triangle', f, f, 0.06, 3.2);
+      const n = ch[[0, 1, 2, 1][step % 4]] * 2;
+      this.tone(o, t, 'sine', n, n, 0.05, 0.35);
+      step++;
+    };
+    play();
+    this.musicTimer = setInterval(play, 400);
+  }
+
   heartbeat() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime, o = this.out({ gain: 1, pan: 0 });

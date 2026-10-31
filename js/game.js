@@ -1,18 +1,18 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031055224';
-import { GameMap } from './map.js?v=20261031055224';
-import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031055224';
-import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031055224';
-import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031055224';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031055224';
-import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031055224';
-import { BotBrain, DIFFICULTY } from './bots.js?v=20261031055224';
-import { Abilities } from './abilities.js?v=20261031055224';
-import { Effects } from './effects.js?v=20261031055224';
-import { ViewModel } from './viewmodel.js?v=20261031055224';
-import { Hud } from './hud.js?v=20261031055224';
-import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031055224';
-import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031055224';
-import { NetMixin } from './netgame.js?v=20261031055224';
+import * as THREE from '../lib/three.module.min.js?v=20261031055456';
+import { GameMap } from './map.js?v=20261031055456';
+import { randomMapDef, MAP_DEFS } from './maps.js?v=20261031055456';
+import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js?v=20261031055456';
+import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js?v=20261031055456';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js?v=20261031055456';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter, buildGun } from './models.js?v=20261031055456';
+import { BotBrain, DIFFICULTY } from './bots.js?v=20261031055456';
+import { Abilities } from './abilities.js?v=20261031055456';
+import { Effects } from './effects.js?v=20261031055456';
+import { ViewModel } from './viewmodel.js?v=20261031055456';
+import { Hud } from './hud.js?v=20261031055456';
+import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js?v=20261031055456';
+import { LOCKER_WEAPONS, randomBotSkin, equippedFor } from './skins.js?v=20261031055456';
+import { NetMixin } from './netgame.js?v=20261031055456';
 
 const TEAM_SIZE = 3;
 const BUY_TIME = 15;
@@ -267,6 +267,8 @@ export class Game {
       this.viewmodel.setWeapon(this.player.weapon.def.id, 0.3);
     } else this.startRound();
     this.running = true;
+    this.sound.lobbyMusic(false);
+    this.sound.ambient(this.map.def.theme);
     this.hud.message(this.map.name.toUpperCase(), this.map.def.blurb, 'warn', 4);
   }
 
@@ -1533,6 +1535,7 @@ export class Game {
   }
 
   finishMatch() {
+    this.sound.stopAmbient();
     if (this.isHost) { this.emit({ e: 'fin' }); this.sendSnapshot(); }
     this.running = false;
     this.paused = true;
@@ -1541,6 +1544,7 @@ export class Game {
   }
 
   stop() {
+    this.sound.stopAmbient();
     this.running = false;
     this.paused = true;
     this.buyOpen = false;

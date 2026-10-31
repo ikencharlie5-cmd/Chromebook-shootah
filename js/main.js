@@ -1,12 +1,12 @@
-import { Game } from './game.js?v=20261031055224';
-import { Sound } from './audio.js?v=20261031055224';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031055224';
-import { Locker } from './locker.js?v=20261031055224';
-import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031055224';
-import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031055224';
-import { makeRoster } from './game.js?v=20261031055224';
-import { randomMapDef } from './maps.js?v=20261031055224';
-import { Party, MAX_PARTY } from './net.js?v=20261031055224';
+import { Game } from './game.js?v=20261031055456';
+import { Sound } from './audio.js?v=20261031055456';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031055456';
+import { Locker } from './locker.js?v=20261031055456';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031055456';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031055456';
+import { makeRoster } from './game.js?v=20261031055456';
+import { randomMapDef } from './maps.js?v=20261031055456';
+import { Party, MAX_PARTY } from './net.js?v=20261031055456';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,7 +15,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULTS = {
   difficulty: 'normal', sensitivity: 1, fov: 90, volume: 0.6, quality: 'medium',
   crossColor: '#00ff9c', fullscreen: false, showFps: false, agent: 'haze', name: '', queue: 'unrated',
-  chLen: 7, chThick: 2, chGap: 3, chDot: true, tipsLeft: 3,
+  chLen: 7, chThick: 2, chGap: 3, chDot: true, tipsLeft: 3, music: true,
 };
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('cbs-settings') || '{}') }; } catch { /* ignore */ }
@@ -50,6 +50,11 @@ const locker = new Locker(game, sound);
 document.getElementById('lockerBtn').addEventListener('click', () => { sound.init(); locker.open(); });
 
 const locked = () => document.pointerLockElement === canvas;
+// browsers only allow audio after a click/key press
+sound.musicOff = settings.music === false;
+const startLobbyAudio = () => { sound.init(); if (!game.running) sound.lobbyMusic(true); };
+document.addEventListener('pointerdown', startLobbyAudio, { once: true });
+document.addEventListener('keydown', startLobbyAudio, { once: true });
 
 function lock() {
   try {
@@ -139,6 +144,7 @@ function bindSettings() {
   vol.value = settings.volume; qual.value = settings.quality; cross.value = settings.crossColor;
   fs.checked = settings.fullscreen; fps.checked = settings.showFps;
   const chLen = $('setChLen'), chThick = $('setChThick'), chGap = $('setChGap'), chDot = $('setChDot');
+  const music = $('setMusic'); music.checked = settings.music;
   chLen.value = settings.chLen; chThick.value = settings.chThick; chGap.value = settings.chGap; chDot.checked = settings.chDot;
   const labels = () => {
     $('chLenVal').textContent = settings.chLen; $('chThickVal').textContent = settings.chThick; $('chGapVal').textContent = settings.chGap;
@@ -158,11 +164,14 @@ function bindSettings() {
     settings.showFps = fps.checked;
     settings.chLen = Number(chLen.value); settings.chThick = Number(chThick.value);
     settings.chGap = Number(chGap.value); settings.chDot = chDot.checked;
+    settings.music = music.checked;
+    sound.musicOff = !settings.music;
+    if (!game.running) sound.lobbyMusic(settings.music);
     labels();
     saveSettings();
     game.applySettings();
   };
-  for (const el of [diff, sens, fov, vol, qual, cross, fs, fps, chLen, chThick, chGap, chDot]) el.addEventListener('input', apply);
+  for (const el of [diff, sens, fov, vol, qual, cross, fs, fps, chLen, chThick, chGap, chDot, music]) el.addEventListener('input', apply);
 }
 bindSettings();
 
@@ -460,6 +469,7 @@ $('resumeBtn').addEventListener('click', () => {
   lock();
 });
 const toMenu = (silent = false) => {
+  sound.lobbyMusic(true);
   if (game.net && !silent) {
     if (party.isHost) party.send({ t: 'abort' });
     else party.send({ t: 'quit' });

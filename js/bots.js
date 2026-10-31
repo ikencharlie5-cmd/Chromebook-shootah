@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031055224';
-import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031055224';
-import { recoilOffset } from './weapons.js?v=20261031055224';
+import * as THREE from '../lib/three.module.min.js?v=20261031055456';
+import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031055456';
+import { recoilOffset } from './weapons.js?v=20261031055456';
 
 export const DIFFICULTY = {
   easy:   { react: [0.5, 0.85], aimErr: 0.13, errDecay: 2.2, turn: 4.5, headChance: 0.1, fov: 0.9, comp: 0.3 },
@@ -176,7 +176,7 @@ export class BotBrain {
     if (ai.routeIdx < route.length) {
       const wp = route[ai.routeIdx];
       this.setGoal(c, wp[0], wp[1], 'via');
-      if (this.arrived(c, 2.2)) ai.routeIdx++;
+      if (this.arrived(c, 2.2)) { ai.routeIdx++; ai.waitT = rand(0.4, 2.2); }  // pause at the corner before pushing
       return;
     }
     this.setGoal(c, spot[0], spot[1], type);
@@ -272,7 +272,8 @@ export class BotBrain {
       lookYaw = yawTo(ai.lastKnown.x - c.pos.x, ai.lastKnown.z - c.pos.z);
     }
 
-    const moving = (g.sideOf(c.team) === 'DEF' || ai.startDelay <= 0) && this.followPath(c, dt);
+    if (ai.waitT > 0) ai.waitT -= dt;
+    const moving = (g.sideOf(c.team) === 'DEF' || ai.startDelay <= 0) && !(ai.waitT > 0) && this.followPath(c, dt);
     if (!moving && ai.goal) {
       if (ai.holdYaw === null) {
         const map = g.map;
@@ -354,10 +355,13 @@ export class BotBrain {
     const dy = t.pos.y + aimY - (c.pos.y + c.eyeHeight);
     const dist = Math.hypot(dx, dz);
 
-    // aim error shrinks over time while tracking
+    // aim error shrinks over time while tracking, but a moving target keeps it shaky
     const decay = Math.exp(-sk.errDecay * dt);
     ai.errYaw *= decay; ai.errPitch *= decay;
-    let yaw = yawTo(dx, dz) + ai.errYaw;
+    const tSpeed = Math.hypot(t.vel.x, t.vel.z);
+    ai.wobble = (ai.wobble || 0) + dt * 7;
+    const shaky = Math.min(0.05, tSpeed * 0.006 * (1.4 - sk.comp));
+    let yaw = yawTo(dx, dz) + ai.errYaw + Math.sin(ai.wobble) * shaky;
     let pitch = pitchTo(dx, dy, dz) + ai.errPitch;
     if (w && !w.def.melee) {
       const rec = recoilOffset(w.def, w.spray);
@@ -409,6 +413,9 @@ export class BotBrain {
       c.wx = rx * ai.strafeDir; c.wz = rz * ai.strafeDir;
     }
     if (g.skill.turn >= 10 && dist > 20 && firingWindow) c.crouching = Math.random() < 0.4;
+    // some bots crouch while spraying up close
+    if (shooting && dist < 12) { if (ai.crouchSpray === undefined) ai.crouchSpray = Math.random() < 0.35; c.crouching = ai.crouchSpray; }
+    else if (!shooting) ai.crouchSpray = undefined;
   }
 
   // ---- abilities -----------------------------------------------------------

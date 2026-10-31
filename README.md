@@ -20,6 +20,13 @@ python3 -m http.server 8000
 
 then open <http://localhost:8000>.
 
+## Modes
+
+- **Unrated** — 3v3 vs bots (difficulty from Settings).
+- **Ranked** — bots scale with your rank. Win to gain RR, lose to drop it. Ranks: Rookie, Bronze, Silver,
+  Gold, Platinum, Diamond, Master (each I–III) and Legend. Your rank shows in the lobby and over your head.
+- **Practice** — a range with strafing targets, free guns and abilities, and accuracy / headshot stats.
+
 ## Multiplayer (party codes)
 
 1. Type your **name** in the lobby.
