@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031031628';
-import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031031628';
+import * as THREE from '../lib/three.module.min.js?v=20261031053739';
+import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031053739';
 
 const GRAV = 14;
 const SMOKE_R = 4.3;
@@ -26,6 +26,7 @@ export class Abilities {
     this.darts = [];
     this.fx = [];
     this.timers = [];
+    this.nextId = 1;
     this.flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
     this.flameMat2 = new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false });
     this.scorchMat = new THREE.MeshBasicMaterial({ color: 0x2a0c04, transparent: true, opacity: 0.6, depthWrite: false });
@@ -67,6 +68,15 @@ export class Abilities {
     return { smoke: c.agent.accent, flash: 0xffffff, molly: 0xff7a2a, recon: c.agent.accent, heal: 0x5dffb0, wall: c.agent.accent, dash: c.agent.accent }[type] ?? c.agent.accent;
   }
 
+  // Play a sound locally and tell clients. `caster` hears it non-positionally (it's their own).
+  sfx(name, pos, caster, who = null) {
+    const g = this.game;
+    const mine = caster?.isPlayer || who?.isPlayer;
+    g.sound[name]?.(mine ? null : pos);
+    const p = pos || caster?.pos;
+    g.emit?.({ e: 'sfx', k: name, p: p ? [p.x, p.y, p.z] : null, c: caster ? caster.id : -1, w: who ? who.id : -1 });
+  }
+
   eye(c, out) { return out.set(c.pos.x, c.pos.y + c.eyeHeight, c.pos.z); }
 
   // Where the crosshair is pointing, capped at maxDist; backs off walls a little.
@@ -100,7 +110,7 @@ export class Abilities {
       case 'smoke': {
         const t = target ? target.clone() : this.aimPoint(c, 45);
         this.lob(c, 'smoke', t, Math.min(1.3, Math.max(0.35, this.handPos(c).distanceTo(t) / 26)));
-        snd.throw(c.isPlayer ? null : c.pos);
+        this.sfx('throw', c.pos, c);
         return true;
       }
       case 'flash':
@@ -116,7 +126,7 @@ export class Abilities {
           vel.y += type === 'recon' ? 1 : 3.5;
           this.spawnProjectile(c, type, this.handPos(c), vel);
         }
-        snd.throw(c.isPlayer ? null : c.pos);
+        this.sfx('throw', c.pos, c);
         return true;
       }
       case 'dash': {
@@ -127,7 +137,7 @@ export class Abilities {
         c.vel.x = wx / l * 17; c.vel.z = wz / l * 17;
         c.vel.y = Math.max(c.vel.y, 1.5);
         c.dashT = 0.2;
-        snd.dash(c.isPlayer ? null : c.pos);
+        this.sfx('dash', c.pos, c);
         if (c.isPlayer) g.fovKick = 12;
         return true;
       }
@@ -135,7 +145,7 @@ export class Abilities {
         const who = this.allyInCrosshair(c) || c;
         if (who.health >= 100 && who === c) return false;
         who.healT = 4;
-        snd.heal(c.isPlayer || who.isPlayer ? null : c.pos);
+        this.sfx('heal', c.pos, c, who);
         g.effects.burst(_a.set(who.pos.x, who.pos.y + 1.2, who.pos.z), _b.set(0, 1, 0), 'heal', 12, 2);
         return true;
       }
@@ -149,7 +159,7 @@ export class Abilities {
         p.y = this.groundAt(p.x, p.z);
         const alongX = Math.abs(Math.cos(c.yaw)) >= Math.abs(Math.sin(c.yaw));
         this.createWall(c, p, alongX);
-        snd.wall(c.isPlayer ? null : c.pos);
+        this.sfx('wall', c.pos, c);
         return true;
       }
       case 'smokeline': {
@@ -170,7 +180,7 @@ export class Abilities {
           t.y = 0;
           this.lob(c, 'smoke', t, 0.3);
         }
-        snd.ult(c.isPlayer ? null : c.pos);
+        this.sfx('ult', c.pos, c);
         return true;
       }
       case 'teamheal':
@@ -180,28 +190,29 @@ export class Abilities {
           o.armor = Math.max(o.armor, 50);
           g.effects.burst(_a.set(o.pos.x, o.pos.y + 1.2, o.pos.z), _b.set(0, 1, 0), 'heal', 18, 3);
         }
-        snd.ult(null);
+        this.sfx('ult', null, null);
         if (c.team === g.playerTeam) g.hud.message('', `${c.isPlayer ? 'You' : c.name} healed the team`, 'win', 1.6);
+        g.emit?.({ e: 'msg', team: c.team, sub: `${c.name} healed the team` });
         return true;
       case 'reveal':
         for (let i = 0; i < 3; i++) {
           this.timers.push({ t: i * 2, fn: () => {
             for (const e of g.combatants) if (e.alive && e.team !== c.team) this.reveal(e, c.team, 1.6);
-            snd.recon(null);
+            this.sfx('recon', null, null);
           } });
         }
-        snd.ult(null);
+        this.sfx('ult', null, null);
         return true;
       case 'inferno': {
         const p = target ? target.clone() : this.aimPoint(c, 35);
         p.y = this.groundAt(p.x, p.z);
         this.createFire(c, p, 6.5, 9, 60);
-        snd.ult(c.isPlayer ? null : c.pos);
+        this.sfx('ult', c.pos, c);
         return true;
       }
       case 'overdrive':
         c.overdriveT = 10;
-        snd.ult(c.isPlayer ? null : c.pos);
+        this.sfx('ult', c.pos, c);
         return true;
       case 'blackout': {
         const eye = this.eye(c, new THREE.Vector3());
@@ -211,8 +222,8 @@ export class Abilities {
           if (ee.distanceTo(eye) < 40 && g.canSee(ee, eye)) this.blind(e, 3.2);
         }
         this.ring(eye, 0xffffff, 40, 0.7);
-        snd.flash(c.isPlayer ? null : c.pos);
-        snd.ult(null);
+        this.sfx('flash', c.pos, c);
+        this.sfx('ult', null, null);
         return true;
       }
     }
@@ -240,7 +251,7 @@ export class Abilities {
     const mesh = new THREE.Mesh(projGeo, new THREE.MeshBasicMaterial({ color: this.colorOf(c, type) }));
     mesh.position.copy(pos);
     this.scene.add(mesh);
-    this.projectiles.push({ type, owner: c, pos: pos.clone(), vel, mesh, t: 0, fuse: type === 'flash' ? 0.7 : type === 'molly' ? 2.5 : 3, lob: null });
+    this.projectiles.push({ id: this.nextId++, color: this.colorOf(c, type), type, owner: c, pos: pos.clone(), vel, mesh, t: 0, fuse: type === 'flash' ? 0.7 : type === 'molly' ? 2.5 : 3, lob: null });
   }
 
   // Ballistic throw that lands exactly on `target` after `flight` seconds (used for smokes and by bots).
@@ -251,7 +262,7 @@ export class Abilities {
     const mesh = new THREE.Mesh(projGeo, new THREE.MeshBasicMaterial({ color: this.colorOf(c, type) }));
     mesh.position.copy(start);
     this.scene.add(mesh);
-    this.projectiles.push({ type, owner: c, pos: start.clone(), vel: v, mesh, t: 0, fuse: type === 'flash' ? flight + 0.05 : 3, lob: physicsAfter ? null : { start, v, flight, target: target.clone() } });
+    this.projectiles.push({ id: this.nextId++, color: this.colorOf(c, type), type, owner: c, pos: start.clone(), vel: v, mesh, t: 0, fuse: type === 'flash' ? flight + 0.05 : 3, lob: physicsAfter ? null : { start, v, flight, target: target.clone() } });
   }
 
   updateProjectiles(dt) {
@@ -287,7 +298,7 @@ export class Abilities {
             const comps = ['x', 'y', 'z'];
             p.vel[comps[axis]] *= -0.4;
             for (let k = 0; k < 3; k++) if (k !== axis) p.vel[comps[k]] *= 0.7;
-            this.game.sound.bounce(p.pos);
+            this.sfx('bounce', p.pos, null);
           }
         } else p.pos.addScaledVector(_d, len);
         if (p.pos.y < -1.5) { this.scene.remove(p.mesh); this.projectiles.splice(i, 1); continue; }
@@ -305,7 +316,7 @@ export class Abilities {
   detonate(p, pos) {
     const snd = this.game.sound;
     switch (p.type) {
-      case 'smoke': this.createSmoke(p.owner, pos); snd.smoke(pos); break;
+      case 'smoke': this.createSmoke(p.owner, pos); this.sfx('smoke', pos, null); break;
       case 'flash': this.popFlash(p.owner, pos); break;
       case 'molly':
         if (this.game.map.charAt(pos.x, pos.z) === '~') return;
@@ -318,7 +329,15 @@ export class Abilities {
   // ---- smoke ------------------------------------------------------------------
 
   createSmoke(owner, pos) {
-    const color = new THREE.Color(0xaeb3be).lerp(new THREE.Color(owner.agent.accent), 0.22);
+    const group = this.smokeMesh(owner.agent.accent);
+    const center = new THREE.Vector3(pos.x, pos.y + 1.2, pos.z);
+    group.position.copy(center);
+    group.scale.setScalar(0.2);
+    this.smokes.push({ id: this.nextId++, color: owner.agent.accent, mesh: group, center, r: SMOKE_R, t: SMOKE_TIME, age: 0, scale: 0.2 });
+  }
+
+  smokeMesh(accent) {
+    const color = new THREE.Color(0xaeb3be).lerp(new THREE.Color(accent), 0.22);
     const group = new THREE.Group();
     const core = new THREE.Mesh(smokeGeo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
     core.scale.setScalar(SMOKE_R);
@@ -331,11 +350,8 @@ export class Abilities {
       m.scale.setScalar(1.9 + (i % 2) * 0.5);
       group.add(m);
     }
-    const center = new THREE.Vector3(pos.x, pos.y + 1.2, pos.z);
-    group.position.copy(center);
-    group.scale.setScalar(0.2);
     this.scene.add(group);
-    this.smokes.push({ mesh: group, center, r: SMOKE_R, t: SMOKE_TIME, age: 0, scale: 0.2 });
+    return group;
   }
 
   // Does any smoke block the segment a→b?
@@ -366,7 +382,7 @@ export class Abilities {
 
   popFlash(owner, pos) {
     const g = this.game;
-    g.sound.flash(pos);
+    this.sfx('flash', pos, null);
     this.ring(pos, 0xffffff, 4, 0.25);
     for (const c of g.combatants) {
       // flashes only affect the thrower's enemies
@@ -393,6 +409,12 @@ export class Abilities {
   // ---- fire -------------------------------------------------------------------
 
   createFire(owner, pos, r, time, dps) {
+    const { mesh, flames } = this.fireMesh(pos, r);
+    this.fires.push({ id: this.nextId++, mesh, flames, pos: pos.clone(), r, t: time, dps, owner, tick: 0 });
+    this.sfx('fire', pos, null);
+  }
+
+  fireMesh(pos, r) {
     const group = new THREE.Group();
     group.position.copy(pos);
     const scorch = new THREE.Mesh(new THREE.CircleGeometry(r, 24), this.scorchMat);
@@ -412,8 +434,7 @@ export class Abilities {
       flames.push(f);
     }
     this.scene.add(group);
-    this.fires.push({ mesh: group, flames, pos: pos.clone(), r, t: time, dps, owner, tick: 0 });
-    this.game.sound.fire(pos);
+    return { mesh: group, flames };
   }
 
   inFire(c) {
@@ -432,13 +453,13 @@ export class Abilities {
     if (p.normal) mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.normal);
     this.scene.add(mesh);
     const pos = p.pos.clone().addScaledVector(p.normal || new THREE.Vector3(0, 1, 0), 0.25);
-    const dart = { mesh, pos, owner: p.owner, pulses: [0.3, 2.0], t: 0, life: 3 };
+    const dart = { id: this.nextId++, mesh, pos, owner: p.owner, pulses: [0.3, 2.0], t: 0, life: 3 };
     this.darts.push(dart);
   }
 
   reconPulse(d) {
     const g = this.game;
-    g.sound.recon(d.pos);
+    this.sfx('recon', d.pos, null);
     this.ring(d.pos, d.owner.agent.accent, 28, 0.6);
     for (const e of g.combatants) {
       if (!e.alive || e.team === d.owner.team) continue;
@@ -450,7 +471,7 @@ export class Abilities {
   reveal(e, byTeam, dur) {
     const g = this.game;
     e.revealUntil = Math.max(e.revealUntil || 0, g.time + dur);
-    if (byTeam === g.playerTeam) e.spotUntil = Math.max(e.spotUntil, g.time + dur);
+    e.spotBy[byTeam] = Math.max(e.spotBy[byTeam], g.time + dur);
     for (const o of g.combatants) {
       if (!o.ai || !o.alive || o.team !== byTeam || o.ai.target) continue;
       o.ai.lastKnown = e.pos.clone();
@@ -466,18 +487,24 @@ export class Abilities {
       ? { minX: p.x - len / 2, maxX: p.x + len / 2, minZ: p.z - th / 2, maxZ: p.z + th / 2 }
       : { minX: p.x - th / 2, maxX: p.x + th / 2, minZ: p.z - len / 2, maxZ: p.z + len / 2 };
     box.minY = p.y; box.maxY = p.y + h; box.kind = 'ability'; box.hp = 500;
-    const color = new THREE.Color(owner.agent.accent);
+    const mesh = this.wallMesh(box, owner.agent.accent);
+    box.wall = { id: this.nextId++, mesh, t: WALL_TIME, owner, grow: 0 };
+    this.walls.push(box.wall);
+    box.wall.box = box;
+    this.game.map.boxes.push(box);
+  }
+
+  wallMesh(box, accent) {
+    const h = box.maxY - box.minY;
+    const color = new THREE.Color(accent);
     const geo = new THREE.BoxGeometry(box.maxX - box.minX, h, box.maxZ - box.minZ);
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color.clone().multiplyScalar(0.55), emissive: color, emissiveIntensity: 0.25, transparent: true, opacity: 0.82 }));
-    mesh.position.set((box.minX + box.maxX) / 2, p.y + h / 2, (box.minZ + box.maxZ) / 2);
+    mesh.position.set((box.minX + box.maxX) / 2, box.minY + h / 2, (box.minZ + box.maxZ) / 2);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color }));
     mesh.add(edges);
     mesh.scale.y = 0.05;
     this.scene.add(mesh);
-    box.wall = { mesh, t: WALL_TIME, owner, grow: 0 };
-    this.walls.push(box.wall);
-    box.wall.box = box;
-    this.game.map.boxes.push(box);
+    return mesh;
   }
 
   damageWall(box, dmg) {
@@ -498,7 +525,8 @@ export class Abilities {
 
   // ---- misc fx ----------------------------------------------------------------
 
-  ring(pos, color, radius, dur) {
+  ring(pos, color, radius, dur, local = false) {
+    if (!local) this.game.emit?.({ e: 'ring', p: [pos.x, pos.y, pos.z], c: color, r: radius, d: dur });
     const mesh = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
     mesh.position.copy(pos);
     mesh.rotation.x = Math.PI / 2;
@@ -566,6 +594,87 @@ export class Abilities {
       if (w.t <= 0) this.removeWall(w);
     }
 
+    for (let i = this.fx.length - 1; i >= 0; i--) {
+      const f = this.fx[i];
+      f.t += dt;
+      const k = f.t / f.dur;
+      f.mesh.scale.setScalar(0.5 + k * f.radius);
+      f.mesh.material.opacity = 0.9 * (1 - k);
+      if (k >= 1) { this.scene.remove(f.mesh); this.fx.splice(i, 1); }
+    }
+  }
+
+  // ---- network sync --------------------------------------------------------------
+
+  // Host: compact state of every live ability object.
+  netState() {
+    const r = (v) => Math.round(v * 100) / 100;
+    return {
+      pr: this.projectiles.map((p) => [p.id, r(p.pos.x), r(p.pos.y), r(p.pos.z), p.color]),
+      sm: this.smokes.map((s) => [s.id, r(s.center.x), r(s.center.y), r(s.center.z), r(s.scale), s.color]),
+      fi: this.fires.map((f) => [f.id, r(f.pos.x), r(f.pos.y), r(f.pos.z), r(f.r), r(f.t)]),
+      wa: this.walls.map((w) => [w.id, r(w.box.minX), r(w.box.minY), r(w.box.minZ), r(w.box.maxX), r(w.box.maxY), r(w.box.maxZ), w.owner.agent.accent]),
+      da: this.darts.map((d) => [d.id, r(d.pos.x), r(d.pos.y), r(d.pos.z), d.owner.agent.accent]),
+    };
+  }
+
+  // Client: create / move / remove visuals to match the host.
+  applyNetState(st) {
+    const sync = (list, rows, make, upd, remove) => {
+      const seen = new Set();
+      for (const row of rows) {
+        seen.add(row[0]);
+        let o = list.find((x) => x.id === row[0]);
+        if (!o) { o = make(row); o.id = row[0]; list.push(o); }
+        upd(o, row);
+      }
+      for (let i = list.length - 1; i >= 0; i--) if (!seen.has(list[i].id)) { remove(list[i]); list.splice(i, 1); }
+    };
+    const rm = (o) => this.scene.remove(o.mesh);
+    sync(this.projectiles, st.pr || [], (row) => {
+      const mesh = new THREE.Mesh(projGeo, new THREE.MeshBasicMaterial({ color: row[4] }));
+      this.scene.add(mesh);
+      return { mesh, pos: new THREE.Vector3() };
+    }, (o, row) => { o.pos.set(row[1], row[2], row[3]); o.mesh.position.copy(o.pos); }, rm);
+    sync(this.smokes, st.sm || [], (row) => {
+      const mesh = this.smokeMesh(row[5]);
+      return { mesh, center: new THREE.Vector3(row[1], row[2], row[3]), r: SMOKE_R, scale: row[4] };
+    }, (o, row) => { o.scale = row[4]; o.mesh.position.copy(o.center); o.mesh.scale.setScalar(Math.max(0.001, o.scale)); }, rm);
+    sync(this.fires, st.fi || [], (row) => {
+      const v = this.fireMesh(new THREE.Vector3(row[1], row[2], row[3]), row[4]);
+      return { ...v, pos: new THREE.Vector3(row[1], row[2], row[3]), r: row[4], owner: { team: -1 } };
+    }, (o, row) => { o.t = row[5]; }, rm);
+    sync(this.walls, st.wa || [], (row) => {
+      const box = { minX: row[1], minY: row[2], minZ: row[3], maxX: row[4], maxY: row[5], maxZ: row[6], kind: 'ability' };
+      const mesh = this.wallMesh(box, row[7]);
+      this.game.map.boxes.push(box);
+      return { mesh, box, grow: 0, owner: { agent: { accent: row[7] } } };
+    }, () => {}, (o) => {
+      this.scene.remove(o.mesh);
+      const i = this.game.map.boxes.indexOf(o.box);
+      if (i >= 0) this.game.map.boxes.splice(i, 1);
+    });
+    sync(this.darts, st.da || [], (row) => {
+      const mesh = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.3, 6), new THREE.MeshBasicMaterial({ color: row[4] }));
+      this.scene.add(mesh);
+      return { mesh, pos: new THREE.Vector3() };
+    }, (o, row) => { o.pos.set(row[1], row[2], row[3]); o.mesh.position.copy(o.pos); }, rm);
+  }
+
+  // Client: only animate what the host told us about.
+  updateVisual(dt) {
+    for (const s of this.smokes) s.mesh.rotation.y += dt * 0.05;
+    for (const f of this.fires) {
+      const fade = Math.min(1, (f.t ?? 1) / 0.8);
+      for (const fl of f.flames) {
+        const k = fl.userData.phase += dt * 9;
+        const sc = (0.7 + Math.sin(k) * 0.3 + Math.sin(k * 2.3) * 0.15) * fade;
+        fl.scale.set(sc, sc * (1.2 + Math.sin(k * 1.7) * 0.4), sc);
+        fl.position.y = fl.scale.y * 0.5;
+      }
+      f.t = Math.max(0, (f.t ?? 1) - dt);
+    }
+    for (const w of this.walls) { w.grow = Math.min(1, w.grow + dt * 4); w.mesh.scale.y = Math.max(0.05, w.grow); }
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i];
       f.t += dt;

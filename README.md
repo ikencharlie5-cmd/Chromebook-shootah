@@ -20,6 +20,22 @@ python3 -m http.server 8000
 
 then open <http://localhost:8000>.
 
+## Multiplayer (party codes)
+
+1. Type your **name** in the lobby.
+2. One player clicks **CREATE PARTY** and shares the 5-letter code.
+3. Friends type the code and click **JOIN**. They appear on the pads next to you.
+4. The host picks **PARTY vs BOTS** (up to 3 friends vs 3 bots) or **FRIENDS vs FRIENDS** (up to 6 players,
+   click the BLUE/RED tag to switch teams; bots fill empty spots) and presses **PLAY**.
+
+How it works: the host's browser runs the match, and friends connect to it directly (peer-to-peer WebRTC,
+using the free PeerJS service only to find each other). There is no game server to set up.
+
+- If someone leaves, a bot takes over their character. If the host leaves, the match ends.
+- Online matches don't pause when you press Esc.
+- Some school/work networks block peer-to-peer connections; if joining fails, try another network.
+- For testing on a local network you can run your own PeerJS server and add `?peerhost=HOST:PORT` to the URL.
+
 ## Controls
 
 | Key | Action |

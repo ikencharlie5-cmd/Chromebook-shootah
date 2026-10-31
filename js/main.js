@@ -1,8 +1,11 @@
-import { Game } from './game.js?v=20261031031628';
-import { Sound } from './audio.js?v=20261031031628';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031031628';
-import { Locker } from './locker.js?v=20261031031628';
-import { SKINS, RARITY_ORDER, equippedFor } from './skins.js?v=20261031031628';
+import { Game } from './game.js?v=20261031053739';
+import { Sound } from './audio.js?v=20261031053739';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031053739';
+import { Locker } from './locker.js?v=20261031053739';
+import { SKINS, RARITY_ORDER, equippedFor } from './skins.js?v=20261031053739';
+import { makeRoster } from './game.js?v=20261031053739';
+import { randomMapDef } from './maps.js?v=20261031053739';
+import { Party, MAX_PARTY } from './net.js?v=20261031053739';
 
 const $ = (id) => document.getElementById(id);
 
@@ -10,11 +13,12 @@ const $ = (id) => document.getElementById(id);
 
 const DEFAULTS = {
   difficulty: 'normal', sensitivity: 1, fov: 90, volume: 0.6, quality: 'medium',
-  crossColor: '#00ff9c', fullscreen: false, showFps: false, agent: 'haze',
+  crossColor: '#00ff9c', fullscreen: false, showFps: false, agent: 'haze', name: '',
 };
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('cbs-settings') || '{}') }; } catch { /* ignore */ }
 const saveSettings = () => localStorage.setItem('cbs-settings', JSON.stringify(settings));
+if (!settings.name) { settings.name = `Player${Math.floor(100 + Math.random() * 900)}`; saveSettings(); }
 
 // ---- input ------------------------------------------------------------------
 
@@ -157,6 +161,7 @@ bindSettings();
 
 function showPause() {
   placeSettings('pauseSettingsSlot');
+  $('pauseNote').textContent = game.net ? 'Online match — the game keeps running while you\'re paused' : '';
   $('pauseMenu').classList.remove('hidden');
 }
 
@@ -185,9 +190,119 @@ function refreshLobby() {
   const agent = AGENT_BY_ID[settings.agent] || AGENTS[0];
   settings.agent = agent.id;
   try { game.buildLobby(agent, lobbyHeld()); } catch (err) { console.error('lobby', err); }
+  if (party.active) party.updateMe(meInfo());
   $('tagAgent').textContent = `${agent.name} · ${agent.role}`;
   $('tagAgent').style.color = '#' + agent.accent.toString(16).padStart(6, '0');
 }
+// ---- party (multiplayer) ------------------------------------------------------
+
+const party = new Party();
+window.__party = party;
+const meInfo = () => ({ name: settings.name, agent: settings.agent, held: lobbyHeld(), skins: game.playerSkins() });
+
+$('nameInput').value = settings.name;
+$('nameInput').addEventListener('input', () => {
+  settings.name = $('nameInput').value.trim().slice(0, 16) || 'Player';
+  saveSettings();
+  if (party.active) party.updateMe(meInfo());
+  $('tagName').textContent = settings.name.toUpperCase();
+});
+$('tagName').textContent = settings.name.toUpperCase();
+
+party.onStatus = (text, err) => {
+  const el = $('partyStatus');
+  el.textContent = text;
+  el.className = err ? 'err' : '';
+};
+const busy = (b) => { for (const id of ['createParty', 'joinParty']) $(id).disabled = b; };
+$('createParty').addEventListener('click', () => {
+  busy(true); party.status('Creating party…');
+  party.host(meInfo()).then(() => party.status('Share the code with friends')).catch((e) => party.status(e.message, true)).finally(() => busy(false));
+});
+$('joinParty').addEventListener('click', () => {
+  const code = $('joinCode').value.trim();
+  if (code.length < 5) { party.status('Enter the 5-letter party code', true); return; }
+  busy(true); party.status('Joining…');
+  party.join(code, meInfo()).then(() => party.status('Joined! Waiting for the host to start')).catch((e) => party.status(e.message, true)).finally(() => busy(false));
+});
+$('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinParty').click(); });
+$('leaveParty').addEventListener('click', () => { party.leave(); party.status('Left the party'); });
+$('copyCode').addEventListener('click', () => { navigator.clipboard?.writeText(party.code || ''); party.status('Code copied'); });
+for (const b of $('modeToggle').querySelectorAll('button')) b.addEventListener('click', () => party.setMode(b.dataset.mode));
+
+function renderParty() {
+  const inParty = party.active;
+  $('partyNone').classList.toggle('hidden', inParty);
+  $('partyIn').classList.toggle('hidden', !inParty);
+  const others = inParty ? party.members.filter((m) => m.id !== party.myId) : [];
+  game.setLobbyFriends(others.slice(0, 2).map((m) => ({ agent: AGENT_BY_ID[m.agent] || AGENTS[0], held: m.held })));
+  for (let i = 0; i < 2; i++) {
+    const t = $('tag' + (i + 1));
+    t.textContent = others[i] ? others[i].name : '+ INVITE';
+    t.classList.toggle('invite', !others[i]);
+  }
+  $('partyMore').textContent = others.length > 2 ? `+${others.length - 2} more in party` : '';
+  const play = $('playBtn');
+  play.disabled = false; play.textContent = 'PLAY';
+  $('modeSub').textContent = '3v3 · bots · random map · first to 7';
+  if (!inParty) return;
+  $('partyCode').textContent = party.code;
+  for (const b of $('modeToggle').querySelectorAll('button')) b.classList.toggle('on', b.dataset.mode === party.mode);
+  $('modeToggle').classList.toggle('locked', !party.isHost);
+  $('partyMembers').innerHTML = party.members.map((m) => {
+    const ag = AGENT_BY_ID[m.agent];
+    const team = party.mode === 'pvp' ? `<span class="tm t${m.team}" data-id="${m.id}">${m.team ? 'RED' : 'BLUE'}</span>` : '';
+    return `<div class="pm"><span class="nm">${m.host ? '★ ' : ''}${escapeHtml(m.name)}${m.id === party.myId ? ' (you)' : ''}</span><span class="ag">${ag ? ag.name : ''}</span>${team}</div>`;
+  }).join('');
+  for (const t of $('partyMembers').querySelectorAll('.tm')) {
+    t.addEventListener('click', () => {
+      const id = t.dataset.id;
+      if (id !== party.myId && !party.isHost) return;
+      const m = party.members.find((x) => x.id === id);
+      party.setTeam(id, m.team ? 0 : 1);
+    });
+  }
+  const n = party.members.length;
+  if (party.mode === 'coop') $('modeSub').textContent = `PARTY vs BOTS · ${n} player${n > 1 ? 's' : ''} + ${Math.max(0, 3 - n)} bot allies vs 3 bots`;
+  else $('modeSub').textContent = `FRIENDS vs FRIENDS · ${n}/${MAX_PARTY} players · bots fill empty spots`;
+  if (!party.isHost) { play.disabled = true; play.textContent = 'WAITING FOR HOST'; }
+  else if (party.mode === 'coop' && n > 3) { play.disabled = true; play.textContent = 'MAX 3 vs BOTS'; }
+}
+party.onChange = renderParty;
+renderParty();
+
+function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function startNetMatch() {
+  const humans = party.members.map((m) => ({
+    human: m.id, name: m.name, agent: m.agent, team: party.mode === 'coop' ? 0 : m.team,
+    skins: m.id === party.myId ? game.playerSkins() : m.skins,
+  }));
+  const roster = makeRoster(humans);
+  const mapId = randomMapDef().id;
+  party.inMatch = true;
+  party.send({ t: 'start', roster, mapId });
+  beginMatch(roster, mapId);
+}
+
+function beginMatch(roster, mapId) {
+  sound.init();
+  for (const id of ['agentSelect', 'menu', 'matchEnd', 'pauseMenu', 'locker']) $(id).classList.add('hidden');
+  game.hud.show(true);
+  game.startFromRoster(roster, party.myId, mapId, party);
+  game.paused = true;
+  game.hud.message(game.map.name.toUpperCase(), 'Click to play', 'warn', 5);
+  lock();
+}
+
+party.on('start', (m) => { if (!party.isHost) { party.inMatch = true; beginMatch(m.roster, m.mapId); } });
+party.on('in', (m, from) => game.onRemoteInput(from, m));
+party.on('s', (m) => game.applySnapshot(m));
+party.on('quit', (m, from) => game.onMemberLeft(from));
+party.on('abort', () => { if (game.running) { toMenu(true); party.status('The host ended the match', true); } });
+party.on('memberLeft', (id) => game.onMemberLeft(id));
+party.on('hostLeft', () => { if (game.running) toMenu(true); });
+
 locker.onChange = refreshLobby;
 refreshLobby();
 
@@ -259,6 +374,10 @@ function openAgentSelect(startAfter = true) {
 }
 
 function startGame() {
+  if (party.active) {
+    if (party.isHost && !$('playBtn').disabled) { settings.agent = picked; saveSettings(); startNetMatch(); }
+    return;
+  }
   sound.init();
   enterFullscreen();
   settings.agent = picked;
@@ -274,7 +393,10 @@ function startGame() {
 }
 
 $('playBtn').addEventListener('click', () => { sound.init(); startGame(); });
-$('againBtn').addEventListener('click', () => { $('matchEnd').classList.add('hidden'); startGame(); });
+$('againBtn').addEventListener('click', () => {
+  $('matchEnd').classList.add('hidden');
+  if (party.active) toMenu(true); else startGame();
+});
 $('lockBtn').addEventListener('click', () => {
   if (selectStarts) startGame();
   else { $('agentSelect').classList.add('hidden'); $('menu').classList.remove('hidden'); }
@@ -289,7 +411,13 @@ $('resumeBtn').addEventListener('click', () => {
   enterFullscreen();
   lock();
 });
-const toMenu = () => {
+const toMenu = (silent = false) => {
+  if (game.net && !silent) {
+    if (party.isHost) party.send({ t: 'abort' });
+    else party.send({ t: 'quit' });
+  }
+  party.inMatch = false;
+  game.net = null; game.isHost = false; game.isClient = false;
   game.stop();
   game.hud.show(false);
   $('pauseMenu').classList.add('hidden');
@@ -299,10 +427,12 @@ const toMenu = () => {
   refreshLobby();
   if (locked()) document.exitPointerLock();
 };
-$('quitBtn').addEventListener('click', toMenu);
-$('menuBtn').addEventListener('click', toMenu);
+$('quitBtn').addEventListener('click', () => toMenu());
+$('menuBtn').addEventListener('click', () => toMenu(true));
 
 game.onMatchEnd = (won, mine, theirs, player) => {
+  party.inMatch = false;
+  $('againBtn').textContent = party.active ? 'BACK TO PARTY' : 'PLAY AGAIN';
   if (locked()) document.exitPointerLock();
   game.hud.show(false);
   game.hud.showBuy(false);
@@ -331,6 +461,16 @@ let last = performance.now();
 let fpsAcc = 0, fpsFrames = 0;
 function loop(now) {
   requestAnimationFrame(loop);
+
+// Browsers stop animation frames in hidden tabs. If you're hosting an online match,
+// keep simulating in the background so your friends' game doesn't freeze.
+let bgLast = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - bgLast) / 1000);
+  bgLast = now;
+  if (document.hidden && game.running && game.isHost) game.update(dt);
+}, 50);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (game.running) game.frame(dt);

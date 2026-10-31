@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031031628';
-import { makeWeaponState } from './weapons.js?v=20261031031628';
+import * as THREE from '../lib/three.module.min.js?v=20261031053739';
+import { makeWeaponState } from './weapons.js?v=20261031053739';
 
 export const RUN_SPEED = 5.4;
 export const WALK_SPEED = 2.9;
@@ -30,6 +30,7 @@ export class Combatant {
     this.deaths = 0;
     this.hasCore = false;
     this.spotUntil = 0;
+    this.spotBy = [0, 0];   // per team: time until which this combatant shows on that team's minimap
     this.slot = 'secondary';
     this.lastSlot = 'melee';
     this.switchT = 0;

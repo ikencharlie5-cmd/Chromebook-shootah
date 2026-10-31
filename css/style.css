@@ -322,3 +322,29 @@ button.primary:hover { filter: brightness(1.1); }
 #loadError { position: fixed; inset: 0; z-index: 1000; background: #0e1116; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
 #loadError.hidden { display: none; }
 #loadError pre { opacity: 0.5; font-size: 12px; max-width: 90vw; white-space: pre-wrap; }
+
+/* ---------- party ---------- */
+.party-card { background: rgba(10,14,20,0.78); padding: 12px 14px; margin-bottom: 10px; border-left: 4px solid var(--ally); }
+.party-card input { background: #1b222b; color: #eef2f5; border: 1px solid #333c47; padding: 7px 8px; font-size: 14px; font-weight: 700; }
+.name-row { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 2px; opacity: 0.95; margin-bottom: 8px; }
+.name-row input { flex: 1; }
+.join-row { display: flex; gap: 6px; } .join-row input { width: 90px; text-transform: uppercase; letter-spacing: 3px; text-align: center; }
+.join-row button { margin: 0; }
+.lobby-small.accent { background: var(--ally); color: #062a2a; border: none; margin: 0 0 8px; }
+.party-code { font-size: 11px; letter-spacing: 2px; display: flex; align-items: center; gap: 8px; }
+.party-code b { font-size: 26px; letter-spacing: 5px; color: var(--gold); }
+button.mini { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
+.mode-toggle { display: flex; gap: 4px; margin: 8px 0; }
+.mode-toggle button { margin: 0; padding: 6px 4px; font-size: 11px; letter-spacing: 1px; }
+.mode-toggle button.on { background: var(--gold); color: #1a1a1a; border-color: var(--gold); }
+.mode-toggle.locked button { pointer-events: none; opacity: 0.6; }
+#partyMembers { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.pm { display: flex; align-items: center; gap: 8px; font-size: 13px; background: rgba(255,255,255,0.05); padding: 4px 8px; }
+.pm .nm { flex: 1; font-weight: 700; } .pm .ag { opacity: 0.6; font-size: 11px; }
+.pm .tm { font-size: 11px; font-weight: 800; padding: 2px 6px; cursor: pointer; }
+.pm .tm.t0 { background: var(--ally); color: #062a2a; } .pm .tm.t1 { background: var(--enemy); }
+#partyStatus { font-size: 12px; min-height: 16px; margin-top: 6px; opacity: 0.85; }
+#partyStatus.err { color: #ff8a8a; }
+#partyMore { position: absolute; left: 50%; top: 80px; transform: translateX(-50%); font-size: 13px; opacity: 0.8; }
+.play-big:disabled { background: #6a6a6a; box-shadow: none; cursor: default; font-size: 22px; letter-spacing: 2px; }
+.lobby-left { width: 330px; }

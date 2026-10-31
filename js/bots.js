@@ -1,6 +1,6 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031031628';
-import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031031628';
-import { recoilOffset } from './weapons.js?v=20261031031628';
+import * as THREE from '../lib/three.module.min.js?v=20261031053739';
+import { rand, choice, wrapAngle, yawTo, pitchTo, clamp } from './util.js?v=20261031053739';
+import { recoilOffset } from './weapons.js?v=20261031053739';
 
 export const DIFFICULTY = {
   easy:   { react: [0.5, 0.85], aimErr: 0.13, errDecay: 2.2, turn: 4.5, headChance: 0.1, fov: 0.9, comp: 0.3 },
@@ -104,7 +104,7 @@ export class BotBrain {
       ai.lastKnown = (ai.lastKnown || new THREE.Vector3()).copy(best.pos);
       ai.lostT = 0;
       ai.dist = bestD;
-      if (c.team === g.playerTeam) best.spotUntil = g.time + 0.6;
+      best.spotBy[c.team] = g.time + 0.6;
     } else if (ai.target) {
       ai.target = null;
       ai.lostT = 0;
@@ -193,7 +193,7 @@ export class BotBrain {
     const g = this.game;
     let best = null, bd = Infinity;
     for (const o of g.combatants) {
-      if (!o.alive || o.isPlayer || g.sideOf(o.team) !== side) continue;
+      if (!o.alive || o.human || g.sideOf(o.team) !== side) continue;
       const d = Math.hypot(o.pos.x - pos.x, o.pos.z - pos.z);
       if (d < bd) { bd = d; best = o; }
     }

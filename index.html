@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chromebook Shootah</title>
-  <link rel="stylesheet" href="css/style.css?v=20261031031628">
+  <link rel="stylesheet" href="css/style.css?v=20261031053739">
 </head>
 <body>
   <div id="game"></div>
@@ -92,11 +92,28 @@
     <div class="name-tag" id="tag0"><b id="tagName">YOU</b><span id="tagAgent"></span></div>
     <div class="name-tag invite" id="tag1">+ INVITE</div>
     <div class="name-tag invite" id="tag2">+ INVITE</div>
+    <div id="partyMore"></div>
 
     <div class="lobby-left">
+      <div class="party-card">
+        <label class="name-row">NAME <input id="nameInput" maxlength="16" placeholder="Your name"></label>
+        <div id="partyNone">
+          <button id="createParty" class="lobby-small accent">CREATE PARTY</button>
+          <div class="join-row"><input id="joinCode" maxlength="5" placeholder="CODE"><button id="joinParty" class="lobby-small">JOIN</button></div>
+        </div>
+        <div id="partyIn" class="hidden">
+          <div class="party-code">PARTY CODE <b id="partyCode">-----</b> <button id="copyCode" class="mini">COPY</button></div>
+          <div class="mode-toggle" id="modeToggle">
+            <button data-mode="coop">PARTY vs BOTS</button><button data-mode="pvp">FRIENDS vs FRIENDS</button>
+          </div>
+          <div id="partyMembers"></div>
+          <button id="leaveParty" class="lobby-small">LEAVE PARTY</button>
+        </div>
+        <div id="partyStatus"></div>
+      </div>
       <div class="mode-card">
         <div class="mode-title">CORE RUSH</div>
-        <div class="mode-sub">3v3 · bots · random map · first to 7</div>
+        <div class="mode-sub" id="modeSub">3v3 · bots · random map · first to 7</div>
       </div>
       <button id="agentBtn" class="lobby-small">CHANGE AGENT</button>
     </div>
@@ -185,6 +202,7 @@
   <div id="pauseMenu" class="overlay hidden">
     <div class="panel">
       <h2>PAUSED</h2>
+      <p id="pauseNote" class="tag"></p>
       <button id="resumeBtn" class="primary">RESUME</button>
       <div id="pauseSettingsSlot"></div>
       <button id="quitBtn">QUIT TO MENU</button>
@@ -246,8 +264,9 @@
     <p>Your browser probably has an old version cached. Press <b>Ctrl + Shift + R</b> to reload.</p>
     <pre id="loadErrorMsg"></pre>
   </div>
+  <script src="lib/peerjs.min.js"></script>
   <script>
-    window.GAME_VERSION = '20261031031628';
+    window.GAME_VERSION = '20261031053739';
     // If a script fails (often a stale cache after an update), show a clear message instead of a blank screen.
     function showLoadError(msg) {
       document.getElementById('loadError').classList.remove('hidden');
@@ -257,6 +276,6 @@
     window.addEventListener('unhandledrejection', (e) => { if (!window.__game) showLoadError(String(e.reason)); });
     setTimeout(() => { if (!window.__game) showLoadError('Game did not finish loading.'); }, 15000);
   </script>
-  <script type="module" src="js/main.js?v=20261031031628" onerror="showLoadError('A game file failed to load.')"></script>
+  <script type="module" src="js/main.js?v=20261031053739" onerror="showLoadError('A game file failed to load.')"></script>
 </body>
 </html>

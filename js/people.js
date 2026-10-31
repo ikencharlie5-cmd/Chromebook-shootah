@@ -1,4 +1,4 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031031628';
+import * as THREE from '../lib/three.module.min.js?v=20261031053739';
 
 // Chunky cartoon people: big heads with faces, hair, outfits. Each body part group is merged
 // into one cel-shaded mesh (+ an outline shell) to keep draw calls low.

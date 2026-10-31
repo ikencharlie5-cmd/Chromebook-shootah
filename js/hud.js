@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031031628';
-import { fmtTime } from './util.js?v=20261031031628';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031031628';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031053739';
+import { fmtTime } from './util.js?v=20261031053739';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031053739';
 
 const $ = (id) => document.getElementById(id);
 
@@ -265,7 +265,7 @@ export class Hud {
     for (const c of g.combatants) {
       if (!c.alive) continue;
       const ally = c.team === g.playerTeam;
-      if (!ally && c.spotUntil < g.time) continue;
+      if (!ally && (c.spotBy?.[g.playerTeam] || 0) < g.time) continue;
       const x = toX(c.pos.x), z = toZ(c.pos.z);
       if (c.isPlayer) {
         ctx.save();
