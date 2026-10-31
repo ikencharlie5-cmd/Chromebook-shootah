@@ -1,16 +1,20 @@
 import * as THREE from '../lib/three.module.min.js';
 import { GameMap } from './map.js';
+import { randomMapDef, MAP_DEFS } from './maps.js';
 import { Combatant, hitboxes, moveBody, applyMovement, speedFor, RUN_SPEED, JUMP_VEL } from './entities.js';
 import { WEAPONS, ARMOR, makeWeaponState, recoilOffset } from './weapons.js';
-import { buildCharacter, setCharacterGun, buildCore } from './models.js';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO } from './agents.js';
+import { buildCharacter, setCharacterGun, buildCore, animateCharacter } from './models.js';
 import { BotBrain, DIFFICULTY } from './bots.js';
+import { Abilities } from './abilities.js';
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { Hud } from './hud.js';
 import { clamp, rand, choice, shuffle, wrapAngle, dirFromAngles, rayAABB, rayHit, yawTo } from './util.js';
 
+const TEAM_SIZE = 3;
 const BUY_TIME = 15;
-const FIRST_BUY_TIME = 20;
+const FIRST_BUY_TIME = 25;
 const ROUND_TIME = 100;
 const CORE_TIME = 40;
 const PLANT_TIME = 4;
@@ -20,15 +24,27 @@ const WIN_ROUNDS = 7;
 const HALF = 6;
 const MAX_CREDITS = 9000;
 
-const ALLY_COLOR = 0x2ec4b6;
-const ENEMY_COLOR = 0xe2474c;
-const NAMES = ['Kestrel', 'Brick', 'Moth', 'Sable', 'Quill', 'Drift', 'Ash', 'Pike', 'Wren', 'Torch', 'Flint', 'Nyx', 'Bolt', 'Rook', 'Juno', 'Vex', 'Halo', 'Grit'];
+const ALLY_LIGHT = 0x2ee6d6;
+const ENEMY_LIGHT = 0xff3048;
+const NAMES = ['Kestrel', 'Brick', 'Moth', 'Sable', 'Quill', 'Drift', 'Ash', 'Pike', 'Wren', 'Torch', 'Flint', 'Nyx', 'Rook', 'Juno', 'Vex', 'Halo', 'Grit'];
 
 const _o = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _hb = [{}, {}, {}];
+
+const markerTex = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ff3048'; g.strokeStyle = '#fff'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(32, 6); g.lineTo(54, 30); g.lineTo(32, 58); g.lineTo(10, 30); g.closePath();
+  g.fill(); g.stroke();
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
 
 export class Game {
   constructor(container, settings, sound, input) {
@@ -41,30 +57,11 @@ export class Game {
     container.appendChild(this.renderer.domElement);
     this.canvas = this.renderer.domElement;
 
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9cc8ec);
-    this.scene.fog = new THREE.Fog(0x9cc8ec, 70, 170);
-    this.camera = new THREE.PerspectiveCamera(settings.fov, 1, 0.05, 400);
+    this.camera = new THREE.PerspectiveCamera(settings.fov, 1, 0.05, 700);
     this.camera.rotation.order = 'YXZ';
-    this.scene.add(new THREE.HemisphereLight(0xe8f2ff, 0x6b5a48, 1.25));
-    const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
-    sun.position.set(40, 80, 25);
-    this.scene.add(sun);
-
-    this.map = new GameMap(this.scene);
-    this.effects = new Effects(this.scene);
     this.viewmodel = new ViewModel(1);
     this.brain = new BotBrain(this);
     this.hud = new Hud(this);
-
-    const core = buildCore();
-    this.core = { state: 'none', pos: new THREE.Vector3(), site: null, timer: 0, mesh: core.group, parts: core, beepT: 0 };
-    this.core.mesh.visible = false;
-    this.scene.add(this.core.mesh);
-
-    this.applySettings();
-    this.resize();
-    window.addEventListener('resize', () => this.resize());
 
     this.time = 0;
     this.running = false;
@@ -76,6 +73,30 @@ export class Game {
     this.buyOpen = false;
     this.spectating = null;
     this.onMatchEnd = null;
+    this.fovKick = 0;
+    this.core = { state: 'none', pos: new THREE.Vector3(), site: null, timer: 0, beepT: 0 };
+
+    this.loadMap(randomMapDef());
+    this.applySettings();
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  // Builds a fresh scene for a map.
+  loadMap(def) {
+    if (this.scene) disposeScene(this.scene);
+    this.scene = new THREE.Scene();
+    this.map = new GameMap(this.scene, def);
+    this.effects = new Effects(this.scene);
+    this.abilities = new Abilities(this);
+    const core = buildCore();
+    this.core.mesh = core.group;
+    this.core.parts = core;
+    core.group.visible = false;
+    this.scene.add(core.group);
+    const th = this.map.theme;
+    this.viewmodel.setLighting(th.hemi[0], th.hemi[1], th.hemi[2]);
+    this.hud.setMap(this.map);
   }
 
   applySettings() {
@@ -99,28 +120,42 @@ export class Game {
 
   // ---- match / round flow -------------------------------------------------
 
-  startMatch() {
-    for (const c of this.combatants) if (c.model) this.scene.remove(c.model.root);
+  // mapId is optional (random by default — matchmaking will pick it later).
+  startMatch(agentId, mapId = null) {
+    this.loadMap(MAP_DEFS.find((m) => m.id === mapId) || randomMapDef());
     this.combatants = [];
     const names = shuffle([...NAMES]);
-    this.player = new Combatant(0, 'You', 0, true);
+    const playerAgent = AGENT_BY_ID[agentId] || AGENTS[0];
+    this.player = new Combatant(0, 'You', 0, true, playerAgent);
     this.combatants.push(this.player);
-    for (let i = 1; i < 10; i++) {
-      const team = i < 5 ? 0 : 1;
-      const c = new Combatant(i, names[i], team);
-      c.model = buildCharacter(team === this.playerTeam ? ALLY_COLOR : ENEMY_COLOR, team === this.playerTeam ? 0x7ffff0 : 0xffd166);
+    const allyPool = shuffle(AGENTS.filter((a) => a !== playerAgent));
+    const enemyPool = shuffle([...AGENTS]);
+    for (let i = 1; i < TEAM_SIZE * 2; i++) {
+      const team = i < TEAM_SIZE ? 0 : 1;
+      const agent = team === 0 ? allyPool.pop() : enemyPool.pop();
+      const c = new Combatant(i, names[i], team, false, agent);
+      c.model = buildCharacter(agent, team === this.playerTeam ? ALLY_LIGHT : ENEMY_LIGHT);
       this.scene.add(c.model.root);
+      if (team !== this.playerTeam) {
+        c.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTex, depthTest: false, transparent: true }));
+        c.marker.scale.set(0.45, 0.45, 1);
+        c.marker.renderOrder = 10;
+        c.marker.visible = false;
+        this.scene.add(c.marker);
+      }
       this.combatants.push(c);
     }
-    this.viewmodel.setTeamColor(ALLY_COLOR);
+    this.viewmodel.setAgent(playerAgent);
     this.score = [0, 0];
     this.lossStreak = [0, 0];
     this.round = 0;
     this.attackTeam = 0;
     this.matchOver = false;
     this.hud.clearKillfeed();
+    this.hud.setAgent(playerAgent);
     this.startRound();
     this.running = true;
+    this.hud.message(this.map.name.toUpperCase(), this.map.def.blurb, 'warn', 4);
   }
 
   sideOf(team) { return team === this.attackTeam ? 'ATK' : 'DEF'; }
@@ -132,6 +167,7 @@ export class Game {
     const pistolRound = this.round === 1 || swap;
 
     this.effects.clear();
+    this.abilities.reset();
     this.phase = 'buy';
     this.phaseT = this.round === 1 ? FIRST_BUY_TIME : BUY_TIME;
     this.defAlert = null;
@@ -139,7 +175,7 @@ export class Game {
     this.core.mesh.visible = false;
     this.core.site = null;
     this.spectating = null;
-    this.actionSoundT = 0;
+    this.map.barriers.visible = true;
 
     const spawnCells = { T: shuffle([...this.map.spawns.T]), D: shuffle([...this.map.spawns.D]) };
     const attackers = [];
@@ -147,6 +183,7 @@ export class Game {
       if (pistolRound) {
         c.credits = 800;
         c.resetLoadout();
+        c.charges.q = 0; c.charges.f = 0;
       } else if (!c.alive) {
         c.resetLoadout();
       }
@@ -157,6 +194,8 @@ export class Game {
       c.scoped = false;
       c.crouch = 0; c.crouching = false;
       c.vel.set(0, 0, 0);
+      c.clearStatus();
+      c.refillSignature();
       c.refillAmmo();
       c.slot = c.bestSlot();
       c.switchT = 0;
@@ -170,24 +209,22 @@ export class Game {
       if (c.model) {
         c.model.root.visible = true;
         c.model.root.rotation.x = 0;
-        c.model.root.position.y = 0;
       }
     }
-    // Hand the Core to a random attacker.
     const carrier = choice(attackers);
     carrier.hasCore = true;
     this.core.carrier = carrier;
 
-    // Bots buy and get their plans.
     for (const c of this.combatants) if (!c.isPlayer) this.botBuy(c, pistolRound);
     this.assignRoles();
 
-    this.player.yawTarget = this.player.yaw;
     this.punch.pitch = this.punch.yaw = 0;
     this.viewmodel.setWeapon(this.player.weapon.def.id, 0.3);
     const side = this.sideOf(this.playerTeam);
-    if (swap) this.hud.message('SWITCHING SIDES', `You are now ${side === 'ATK' ? 'ATTACKING' : 'DEFENDING'}`, 'warn', 4);
-    else this.hud.message(`ROUND ${this.round}`, side === 'ATK' ? 'ATTACK — plant the Core at A or B' : 'DEFEND — protect sites A and B', '', 3);
+    if (this.round > 1) {
+      if (swap) this.hud.message('SWITCHING SIDES', `You are now ${side === 'ATK' ? 'ATTACKING' : 'DEFENDING'}`, 'warn', 4);
+      else this.hud.message(`ROUND ${this.round}`, side === 'ATK' ? 'ATTACK — plant the Core at A or B' : 'DEFEND — protect sites A and B', '', 3);
+    }
   }
 
   assignRoles() {
@@ -196,13 +233,11 @@ export class Game {
     const site = Math.random() < 0.5 ? 'A' : 'B';
     this.attackSite = site;
     const routes = this.map.routes[site];
-    atk.forEach((c, i) => {
-      // carrier tends to follow the main group; some players split through mid
-      const route = routes[i % routes.length];
-      this.brain.initRound(c, { kind: 'attack', site, route });
-    });
-    const areas = shuffle(def.length >= 5 ? ['A', 'A', 'mid', 'B', 'B'] : ['A', 'mid', 'B', 'B', 'A']);
-    def.forEach((c, i) => this.brain.initRound(c, { kind: 'hold', area: areas[i % areas.length] }));
+    atk.forEach((c, i) => this.brain.initRound(c, { kind: 'attack', site, route: routes[i % routes.length] }));
+    const areas = shuffle(['A', 'B', 'mid']);
+    // with only two defending bots (player defends too) cover both sites
+    const list = def.length >= 3 ? areas : shuffle(['A', 'B']);
+    def.forEach((c, i) => this.brain.initRound(c, { kind: 'hold', area: list[i % list.length] }));
   }
 
   botBuy(c, pistolRound) {
@@ -219,10 +254,17 @@ export class Game {
       c.credits -= a.price;
       c.armor = a.value;
     };
+    const abilities = () => {
+      for (const k of ['q', 'f']) {
+        const kit = c.agent.kit[k];
+        while (c.charges[k] < kit.max && c.credits >= kit.price) { c.credits -= kit.price; c.charges[k]++; }
+      }
+    };
     if (pistolRound) {
       const r = Math.random();
-      if (r < 0.45) armor('light');
-      else if (r < 0.8) buy('bolt');
+      if (r < 0.4) armor('light');
+      else if (r < 0.7) buy('bolt');
+      abilities();
     } else if (!c.inv.primary) {
       const cr = c.credits;
       if (cr >= 5500 && Math.random() < 0.2) { buy('lynx'); armor('heavy'); }
@@ -232,18 +274,25 @@ export class Game {
       else if (cr >= 2000) { buy('wasp'); armor('light'); }
       else if (cr >= 1600 && Math.random() < 0.5) buy('wasp');
       else if (cr >= 800 && Math.random() < 0.4) buy('bolt');
+      abilities();
     } else {
       if (c.credits >= 1000) armor('heavy');
       else armor('light');
+      abilities();
     }
     c.slot = c.bestSlot();
   }
 
-  // Player purchases from the buy menu.
+  // Player purchases from the buy menu. ids: weapon id, 'light'/'heavy', or 'ab:q' / 'ab:f'.
   buy(id) {
     const p = this.player;
     if (this.phase !== 'buy' || !p.alive) { this.sound.deny(); return; }
-    if (ARMOR[id]) {
+    if (id.startsWith('ab:')) {
+      const k = id.slice(3), kit = p.agent.kit[k];
+      if (!kit || !kit.price || p.charges[k] >= kit.max || p.credits < kit.price) { this.sound.deny(); return; }
+      p.credits -= kit.price;
+      p.charges[k]++;
+    } else if (ARMOR[id]) {
       const a = ARMOR[id];
       if (p.armor >= a.value || p.credits < a.price) { this.sound.deny(); return; }
       p.credits -= a.price;
@@ -275,11 +324,16 @@ export class Game {
     }
     const won = winTeam === this.playerTeam;
     this.sound.announce(won);
-    const reasons = {
-      elim: 'Team eliminated', time: 'Time ran out', detonate: 'Core detonated', defuse: 'Core defused',
-    };
+    const reasons = { elim: 'Team eliminated', time: 'Time ran out', detonate: 'Core detonated', defuse: 'Core defused' };
     this.hud.message(won ? 'ROUND WON' : 'ROUND LOST', reasons[reason] || '', won ? 'win' : 'loss', END_TIME - 0.5);
     if (this.score[winTeam] >= WIN_ROUNDS) this.matchOver = true;
+  }
+
+  addUlt(c, n = 1) {
+    if (!c.agent) return;
+    const before = c.ult;
+    c.ult = Math.min(c.agent.kit.x.cost, c.ult + n);
+    if (c.isPlayer && before < c.agent.kit.x.cost && c.ult >= c.agent.kit.x.cost) this.hud.message('', 'ULTIMATE READY — press X', 'warn', 2);
   }
 
   // ---- main update --------------------------------------------------------
@@ -292,6 +346,7 @@ export class Game {
     if (this.phase === 'buy' && this.phaseT <= 0) {
       this.phase = 'live';
       this.phaseT = ROUND_TIME;
+      this.map.barriers.visible = false;
       if (this.buyOpen) { this.toggleBuy(false); this.onBuyAutoClose?.(); }
       this.hud.message('GO', '', 'warn', 1.2);
     } else if (this.phase === 'live') {
@@ -309,13 +364,25 @@ export class Game {
       this.updateBody(c, dt, c.wx, c.wz);
     }
     this.separate();
-    for (const c of this.combatants) if (c.alive) this.updateWeapon(c, dt);
+    for (const c of this.combatants) if (c.alive) { this.updateWeapon(c, dt); this.updateStatus(c, dt); }
+    this.abilities.update(dt);
     this.updateActions(dt);
     this.updateCore(dt);
     this.updateSpotting();
     this.checkElimination();
     this.updateModels(dt);
     this.effects.update(dt);
+    this.map.update(dt);
+  }
+
+  updateStatus(c, dt) {
+    if (c.blind > 0) c.blind = Math.max(0, c.blind - dt);
+    if (c.overdriveT > 0) c.overdriveT -= dt;
+    if (c.castT > 0) c.castT -= dt;
+    if (c.healT > 0) {
+      c.healT -= dt;
+      c.health = Math.min(100, c.health + 15 * dt);
+    }
   }
 
   updateBody(c, dt, wx, wz) {
@@ -327,7 +394,6 @@ export class Game {
     const landed = moveBody(this.map, c, dt, restrict);
     if (landed && c.isPlayer) this.sound.land();
 
-    // footsteps: running is loud, walking/crouching is silent
     const sp = Math.hypot(c.vel.x, c.vel.z);
     if (c.onGround && sp > 0.5) {
       c.stepDist += sp * dt;
@@ -346,7 +412,6 @@ export class Game {
     }
   }
 
-  // Push overlapping combatants apart.
   separate() {
     const list = this.combatants;
     for (let i = 0; i < list.length; i++) {
@@ -360,11 +425,13 @@ export class Game {
         if (d >= min || d < 1e-4 || Math.abs(a.pos.y - b.pos.y) > 1.5) continue;
         const push = (min - d) / 2;
         const nx = dx / d, nz = dz / d;
-        a.vel.x = 0; a.vel.z = 0; b.vel.x = 0; b.vel.z = 0;
         a.pos.x -= nx * push; a.pos.z -= nz * push;
         b.pos.x += nx * push; b.pos.z += nz * push;
+        const ax = a.vel.x, az = a.vel.z, bx = b.vel.x, bz = b.vel.z;
+        a.vel.x = a.vel.z = b.vel.x = b.vel.z = 0;
         moveBody(this.map, a, 0, null);
         moveBody(this.map, b, 0, null);
+        a.vel.x = ax; a.vel.z = az; b.vel.x = bx; b.vel.z = bz;
       }
     }
   }
@@ -377,7 +444,7 @@ export class Game {
     this.lookDx = look.dx; this.lookDy = look.dy;
 
     if (!p.alive) {
-      this.updateSpectate(look);
+      this.updateSpectate();
       return;
     }
 
@@ -393,12 +460,10 @@ export class Game {
     p.crouching = !menuBlock && (k('KeyC') || k('ControlLeft'));
     p.walking = !menuBlock && (k('ShiftLeft') || k('ShiftRight'));
 
-    // weapon switching
     if (!menuBlock) {
       if (inp.pressed('Digit1') && p.inv.primary) this.switchSlot(p, 'primary');
       if (inp.pressed('Digit2') && p.inv.secondary) this.switchSlot(p, 'secondary');
       if (inp.pressed('Digit3')) this.switchSlot(p, 'melee');
-      if (inp.pressed('KeyQ') && p.inv[p.lastSlot]) this.switchSlot(p, p.lastSlot);
       const wheel = inp.consumeWheel();
       if (wheel) {
         const order = ['primary', 'secondary', 'melee'].filter((sl) => p.inv[sl]);
@@ -406,9 +471,15 @@ export class Game {
         this.switchSlot(p, order[(i + (wheel > 0 ? 1 : -1) + order.length) % order.length]);
       }
       if (inp.pressed('KeyR')) this.startReload(p);
+      for (const [code, key] of [['KeyQ', 'q'], ['KeyE', 'e'], ['KeyF', 'f'], ['KeyX', 'x']]) {
+        if (!inp.pressed(code)) continue;
+        if (!this.abilities.cast(p, key)) {
+          this.sound.deny();
+          if (key === 'x' && this.phase === 'live') this.hud.message('', `Ultimate ${p.ult}/${p.agent.kit.x.cost}`, '', 1.2);
+        }
+      }
     }
 
-    // movement
     let fx = 0, fz = 0;
     if (!menuBlock) {
       const fwd = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0);
@@ -420,16 +491,15 @@ export class Game {
       if (l > 0) { fx /= l; fz /= l; }
       if (k('Space') && p.onGround && !p.action) p.vel.y = JUMP_VEL;
     }
+    p.moveX = fx; p.moveZ = fz;
     this.updateBody(p, dt, fx, fz);
 
-    // scope
     const w = p.weapon;
     if (w.def.scope) {
       if (inp.pressed('Mouse2') && !menuBlock && w.reloadT <= 0 && p.switchT <= 0) p.scoped = !p.scoped;
       if (w.reloadT > 0 || p.switchT > 0) p.scoped = false;
     } else p.scoped = false;
 
-    // shooting
     const trigger = inp.mouse[0] && !menuBlock && !p.action;
     if (trigger && this.phase !== 'buy') {
       if (w.def.auto || !p.triggerHeld) {
@@ -440,9 +510,15 @@ export class Game {
       }
     }
     p.triggerHeld = trigger;
+
+    // standing in enemy fire
+    if (this.abilities.inFire(p)) {
+      this.burnT = (this.burnT || 0) - dt;
+      if (this.burnT <= 0) { this.burnT = 0.3; this.sound.burn(); }
+    }
   }
 
-  updateSpectate(look) {
+  updateSpectate() {
     const allies = this.combatants.filter((c) => c.alive && c.team === this.playerTeam && !c.isPlayer);
     if (!this.spectating || !this.spectating.alive || this.input.pressed('Mouse0')) {
       if (allies.length) {
@@ -455,7 +531,7 @@ export class Game {
   switchSlot(c, slot, force = false) {
     if (!c.inv[slot] || (c.slot === slot && !force)) return;
     const cur = c.weapon;
-    if (cur) { cur.reloadT = 0; }
+    if (cur) cur.reloadT = 0;
     if (c.slot !== slot) c.lastSlot = c.slot;
     c.slot = slot;
     c.scoped = false;
@@ -469,7 +545,7 @@ export class Game {
   startReload(c) {
     const w = c.weapon;
     if (!w || w.def.melee || w.reloadT > 0 || w.mag >= w.def.mag || w.reserve <= 0) return;
-    w.reloadT = w.def.reload;
+    w.reloadT = w.def.reload * (c.overdriveT > 0 ? 0.5 : 1);
     c.scoped = false;
     if (c.isPlayer) this.sound.reload();
   }
@@ -488,7 +564,6 @@ export class Game {
         w.reloadT = 0;
       }
     }
-    // spray recovers once you stop firing
     const interval = 60 / w.def.rpm;
     if (w.sinceShot > interval * 1.6) w.spray = Math.max(0, w.spray - dt * 14);
   }
@@ -496,11 +571,11 @@ export class Game {
   spreadFor(c) {
     const d = c.weapon.def;
     const sp = Math.hypot(c.vel.x, c.vel.z);
-    const move = clamp((sp - 0.8) / 4.6, 0, 1);
+    const move = c.overdriveT > 0 ? 0 : clamp((sp - 0.8) / 4.6, 0, 1);
     let base = d.spread;
     if (d.scope && (c.scoped || !c.isPlayer)) base = d.scopedSpread;
     let s = base * (c.crouch > 0.5 ? 0.75 : 1) + d.moveSpread * Math.pow(move, 1.5);
-    if (!c.onGround) s += d.airSpread;
+    if (!c.onGround && c.overdriveT <= 0) s += d.airSpread;
     s += d.bloom * Math.min(c.weapon.spray, 10);
     return s;
   }
@@ -508,14 +583,13 @@ export class Game {
   canFire(c) {
     const w = c.weapon;
     return w && c.alive && !c.action && c.switchT <= 0 && w.cool <= 0 && w.reloadT <= 0 && this.phase !== 'buy' &&
-      (w.def.melee || w.mag > 0);
+      c.castT <= 0.25 && (w.def.melee || w.mag > 0);
   }
 
-  // Fire one shot if the weapon is ready. Returns true if it fired.
   tryShoot(c) {
     if (!this.canFire(c)) return false;
     const w = c.weapon, d = w.def;
-    w.cool = 60 / d.rpm;
+    w.cool = 60 / d.rpm * (c.overdriveT > 0 ? 0.8 : 1);
     if (!c.isPlayer && !d.auto) w.cool = Math.max(w.cool, rand(0.22, 0.38));
     w.sinceShot = 0;
 
@@ -533,13 +607,12 @@ export class Game {
     w.mag--;
     const rec = recoilOffset(d, w.spray);
     w.spray += 1;
-    const spread = this.spreadFor(c);
+    const spread = this.spreadFor(c) + (c.blind > 0 ? 0.08 : 0);
     const a = Math.random() * Math.PI * 2, r = spread * Math.random();
     dirFromAngles(c.yaw + rec.yaw + Math.cos(a) * r, c.pitch + rec.pitch + Math.sin(a) * r, _d);
 
     const hit = this.trace(c, _o, _d, 200);
 
-    // tracer from the muzzle
     let muzzle;
     if (c.isPlayer) {
       muzzle = _p.copy(_o);
@@ -565,9 +638,9 @@ export class Game {
       this.applyDamage(hit.entity, c, dmg, hit.part, d.name, _d);
     } else if (hit.t < 200) {
       this.effects.impact(hit.point, hit.normal);
+      if (hit.box?.kind === 'ability') this.abilities.damageWall(hit.box, d.dmg.body);
     }
 
-    // gunfire is loud — enemies nearby turn toward it
     for (const o of this.combatants) {
       if (o.isPlayer || !o.alive || o.team === c.team) continue;
       if (o.pos.distanceTo(c.pos) < 55) this.brain.hear(o, c.pos, 1);
@@ -575,25 +648,29 @@ export class Game {
     return true;
   }
 
-  // Ray against world and enemy hitboxes. Teammates are ignored (no friendly fire).
-  trace(shooter, o, d, maxT) {
-    let bestT = maxT, normalAxis = -1, normalSign = 0;
+  // World-only ray (no characters). Returns { t, axis, sign, box }.
+  traceWorld(o, d, maxT) {
+    let bestT = maxT, axis = -1, sign = 0, box = null;
     for (const b of this.map.boxes) {
+      if (b.noShot) continue;
       const t = rayAABB(o.x, o.y, o.z, d.x, d.y, d.z, b, bestT);
-      if (t >= 0 && t < bestT) { bestT = t; normalAxis = rayHit.axis; normalSign = rayHit.sign; }
+      if (t >= 0 && t < bestT) { bestT = t; axis = rayHit.axis; sign = rayHit.sign; box = b; }
     }
-    // floor
-    if (d.y < 0) {
+    if (d.y < 0 && this.map.charAt(o.x + d.x * (-o.y / d.y), o.z + d.z * (-o.y / d.y)) !== '~') {
       const t = -o.y / d.y;
-      if (t < bestT) { bestT = t; normalAxis = 1; normalSign = 1; }
+      if (t < bestT) { bestT = t; axis = 1; sign = 1; box = null; }
     }
+    return { t: bestT, axis, sign, box };
+  }
+
+  trace(shooter, o, d, maxT) {
+    const w = this.traceWorld(o, d, maxT);
+    let bestT = w.t;
     let entity = null, part = null;
     for (const e of this.combatants) {
       if (!e.alive || e.team === shooter.team) continue;
-      // quick reject: distance from ray to entity
       const ex = e.pos.x - o.x, ez = e.pos.z - o.z;
-      const along = ex * d.x + ez * d.z;
-      if (along < -1) continue;
+      if (ex * d.x + ez * d.z < -1) continue;
       hitboxes(e, _hb);
       for (const b of _hb) {
         const t = rayAABB(o.x, o.y, o.z, d.x, d.y, d.z, b, bestT);
@@ -602,21 +679,22 @@ export class Game {
     }
     const point = new THREE.Vector3(o.x + d.x * bestT, o.y + d.y * bestT, o.z + d.z * bestT);
     _n.set(0, 0, 0);
-    if (normalAxis >= 0) _n.setComponent(normalAxis, normalSign);
-    return { t: bestT, point, normal: _n.clone(), entity, part };
+    if (!entity && w.axis >= 0) _n.setComponent(w.axis, w.sign);
+    return { t: bestT, point, normal: _n.clone(), entity, part, box: entity ? null : w.box };
   }
 
-  // Line-of-sight check against world geometry.
+  // Line of sight: world geometry, ability walls and smokes all block vision.
   canSee(from, to) {
     const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
     const len = Math.hypot(dx, dy, dz);
     if (len < 1e-4) return true;
     const ix = dx / len, iy = dy / len, iz = dz / len;
     for (const b of this.map.boxes) {
+      if (b.noShot) continue;
       const t = rayAABB(from.x, from.y, from.z, ix, iy, iz, b, len);
       if (t >= 0 && t < len - 0.05) return false;
     }
-    return true;
+    return !this.abilities.smokeBlocks(from, to);
   }
 
   applyDamage(victim, attacker, dmg, part, weaponName, dir) {
@@ -632,24 +710,21 @@ export class Game {
 
     if (attacker.isPlayer) {
       this.hud.hitmarker(killed ? 'kill' : part === 'head' ? 'head' : 'hit');
-      this.sound.hit(part === 'head');
+      if (dir) this.sound.hit(part === 'head');
     }
     if (victim.isPlayer) {
       const ang = wrapAngle(yawTo(attacker.pos.x - victim.pos.x, attacker.pos.z - victim.pos.z) - victim.yaw);
       this.hud.damageFrom(-ang);
-      this.sound.hurt();
-      this.punch.pitch += 0.02;
+      if (dir) { this.sound.hurt(); this.punch.pitch += 0.02; }
       victim.action = null;
     } else {
       this.brain.hear(victim, attacker.pos, 2);
-      // getting shot means you know where they are
       if (victim.ai && !victim.ai.target) {
         victim.ai.lastKnown = attacker.pos.clone();
         victim.ai.lostT = 0;
       }
     }
-    // flinch: slows the victim
-    victim.vel.x *= 0.5; victim.vel.z *= 0.5;
+    if (dir) { victim.vel.x *= 0.5; victim.vel.z *= 0.5; }
 
     if (killed) this.kill(victim, attacker, weaponName, part === 'head');
   }
@@ -661,21 +736,24 @@ export class Game {
     victim.action = null;
     victim.scoped = false;
     victim.deadT = 0;
+    this.addUlt(victim, 1);
     if (killer && killer !== victim && killer.team !== victim.team) {
       killer.kills++;
       killer.credits = Math.min(MAX_CREDITS, killer.credits + 200);
+      this.addUlt(killer, 1);
+      if (killer.overdriveT > 0) killer.health = Math.min(100, killer.health + 40);
       if (killer.isPlayer) this.sound.kill();
     }
     if (victim.hasCore) {
       victim.hasCore = false;
       this.core.state = 'dropped';
-      this.core.pos.set(victim.pos.x, 0, victim.pos.z);
+      this.core.pos.set(victim.pos.x, Math.max(0, victim.pos.y), victim.pos.z);
       this.core.mesh.visible = true;
       this.core.carrier = null;
     }
     this.hud.killfeed(killer, victim, weaponName, head);
     if (victim.isPlayer) {
-      this.hud.message('YOU DIED', killer ? `Killed by ${killer.name}` : '', 'loss', 2.5);
+      this.hud.message('YOU DIED', killer ? `Killed by ${killer.name} (${killer.agent.name})` : '', 'loss', 2.5);
       this.hud.scope(false);
     }
   }
@@ -687,7 +765,7 @@ export class Game {
     let playerProgress = null;
     for (const c of this.combatants) {
       if (!c.alive) { c.action = null; continue; }
-      const wants = c.isPlayer ? this.input.keys.has('KeyE') && !this.buyOpen : c.ai?.wantAction;
+      const wants = c.isPlayer ? this.input.keys.has('Digit4') && !this.buyOpen : c.ai?.wantAction;
       let type = null;
       if (this.phase === 'live' && wants && c.onGround) {
         const side = this.sideOf(c.team);
@@ -705,6 +783,7 @@ export class Game {
       const need = type === 'plant' ? PLANT_TIME : DEFUSE_TIME;
       if (c.isPlayer) playerProgress = [type === 'plant' ? 'PLANTING CORE' : 'DEFUSING CORE', c.action.t / need];
       if (c.action.t >= need) {
+        this.addUlt(c, 1);
         if (type === 'plant') this.plantCore(c);
         else this.defuseCore(c);
         c.action = null;
@@ -713,15 +792,12 @@ export class Game {
     if (playerProgress) this.hud.progress(playerProgress[0], playerProgress[1]);
     else this.hud.progress('', null);
 
-    // contextual hints
     const p = this.player;
     let hint = '';
     if (p.alive && this.phase === 'live') {
-      if (p.hasCore && this.map.siteAt(p.pos.x, p.pos.z) && !p.action) hint = 'Hold E to plant the Core';
+      if (p.hasCore && this.map.siteAt(p.pos.x, p.pos.z) && !p.action) hint = 'Hold 4 to plant the Core';
       else if (this.sideOf(p.team) === 'DEF' && core.state === 'planted' && !p.action &&
-        Math.hypot(core.pos.x - p.pos.x, core.pos.z - p.pos.z) < 1.8) hint = 'Hold E to defuse';
-    } else if (p.alive && this.phase === 'buy') {
-      hint = '';
+        Math.hypot(core.pos.x - p.pos.x, core.pos.z - p.pos.z) < 1.8) hint = 'Hold 4 to defuse';
     }
     this.hud.hint(hint);
   }
@@ -797,8 +873,7 @@ export class Game {
       if (!c.alive) continue;
       const d = c.pos.distanceTo(core.pos);
       if (d < 20) {
-        const dmg = d < 11 ? 999 : 300 * (1 - (d - 11) / 9);
-        c.health -= dmg;
+        c.health -= d < 11 ? 999 : 300 * (1 - (d - 11) / 9);
         if (c.health <= 0) this.kill(c, null, 'Core', false);
       }
     }
@@ -816,14 +891,12 @@ export class Game {
     else if (atk === 0 && this.core.state !== 'planted') this.endRound('DEF', 'elim');
   }
 
-  // Enemies the player can see show up on the minimap for teammates too; attackers
-  // spotted on a site make defenders rotate.
   updateSpotting() {
     this.spotT = (this.spotT || 0) - 1;
     if (this.spotT > 0) return;
     this.spotT = 6;
     const p = this.player;
-    if (p.alive) {
+    if (p.alive && p.blind <= 0) {
       _o.set(p.pos.x, p.pos.y + p.eyeHeight, p.pos.z);
       for (const e of this.combatants) {
         if (e.team === p.team || !e.alive) continue;
@@ -839,7 +912,6 @@ export class Game {
         if (!e.alive || e.team !== this.attackTeam) continue;
         const site = this.map.siteAt(e.pos.x, e.pos.z);
         if (!site) continue;
-        // some defender has eyes on them
         const seen = this.combatants.some((d) => d.alive && d.team === defTeam && d.ai?.target === e);
         if (seen) { this.defAlert = { site, time: this.time }; break; }
       }
@@ -854,39 +926,37 @@ export class Game {
       if (!m) continue;
       if (!c.alive) {
         c.deadT += dt;
-        m.root.rotation.x = Math.min(Math.PI / 2, c.deadT * 5);
-        m.root.position.y = Math.max(-0.1, c.pos.y - c.deadT * 0.6);
+        animateCharacter(m, { dead: true, deadT: c.deadT }, dt);
+        if (c.marker) c.marker.visible = false;
         continue;
       }
       m.root.position.copy(c.pos);
       m.root.rotation.y = c.yaw;
       setCharacterGun(m, c.weapon.def.id);
-      const sp = Math.hypot(c.vel.x, c.vel.z);
-      c.animT = (c.animT || 0) + dt * sp * 2.2;
-      const swing = Math.sin(c.animT) * Math.min(sp / 5, 1) * 0.7;
-      m.legL.rotation.x = swing;
-      m.legR.rotation.x = -swing;
-      const cr = c.crouch;
-      m.upper.position.y = -0.45 * cr;
-      m.legL.scale.y = m.legR.scale.y = 1 - 0.45 * cr;
-      m.legL.position.y = m.legR.position.y = 0.88 - 0.4 * cr;
-      m.gunHolder.rotation.x = c.pitch * 0.8;
-      m.head.rotation.x = c.pitch * 0.5;
-      if (c.action) m.upper.position.y -= 0.3;
+      animateCharacter(m, {
+        speed: Math.hypot(c.vel.x, c.vel.z), crouch: c.crouch, pitch: c.pitch,
+        action: !!c.action, onGround: c.onGround,
+      }, dt);
+      if (c.marker) {
+        const show = c.revealUntil > this.time;
+        c.marker.visible = show;
+        if (show) c.marker.position.set(c.pos.x, c.pos.y + 2.25, c.pos.z);
+      }
     }
   }
 
   render() {
     const p = this.player;
-    // view punch recovers toward zero
-    this.punch.pitch *= Math.exp(-this.dtLast * 9);
-    this.punch.yaw *= Math.exp(-this.dtLast * 9);
+    const dt = this.dtLast;
+    this.punch.pitch *= Math.exp(-dt * 9);
+    this.punch.yaw *= Math.exp(-dt * 9);
+    this.fovKick *= Math.exp(-dt * 6);
 
-    let viewer = p, aliveView = p.alive;
+    let viewer = p;
+    const aliveView = p.alive;
     if (!p.alive && this.spectating) viewer = this.spectating;
     if (!p.alive && !this.spectating) {
-      // overview camera
-      this.camera.position.set(0, 55, 48);
+      this.camera.position.set(0, 50, this.map.H * 1.8);
       this.camera.rotation.set(-0.95, 0, 0);
     } else {
       this.camera.position.set(viewer.pos.x, viewer.pos.y + viewer.eyeHeight, viewer.pos.z);
@@ -901,16 +971,13 @@ export class Game {
     }
     for (const c of this.combatants) if (c.model) c.model.root.visible = c !== this.spectating;
 
-    // scope zoom
     const scoped = aliveView && p.scoped;
-    const fov = scoped ? p.weapon.def.zoomFov : this.baseFov;
-    if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    const fov = (scoped ? p.weapon.def.zoomFov : this.baseFov) + this.fovKick;
+    if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     this.hud.scope(scoped);
 
-    // listener
     this.sound.setListener(this.camera.position.x, this.camera.position.z, this.camera.rotation.y);
 
-    // HUD crosshair gap reflects real spread
     const showCross = aliveView && !scoped && !this.buyOpen;
     if (showCross) {
       const w = p.weapon;
@@ -919,13 +986,17 @@ export class Game {
       this.hud.crosshair(3 + px, true);
     } else this.hud.crosshair(0, false);
 
+    const watched = p.alive ? p : this.spectating;
+    this.hud.flash(watched ? Math.min(1, watched.blind / 0.9) : 0);
+    this.hud.overdrive(watched?.overdriveT > 0);
+    this.hud.inSmoke(this.abilities.inSmoke(this.camera.position));
+
     if (this.player.alive) this.hud.spectate('');
-    else if (this.spectating) this.hud.spectate(`Spectating ${this.spectating.name} · click to switch`);
+    else if (this.spectating) this.hud.spectate(`Spectating ${this.spectating.name} (${this.spectating.agent.name}) · click to switch`);
     else this.hud.spectate('Waiting for next round');
 
-    // viewmodel
     const w = p.weapon;
-    this.viewmodel.update(this.dtLast, {
+    this.viewmodel.update(dt, {
       speed: Math.hypot(p.vel.x, p.vel.z),
       onGround: p.onGround,
       lookDx: this.lookDx, lookDy: this.lookDy,
@@ -934,8 +1005,8 @@ export class Game {
       crouch: p.crouch,
       action: !!p.action,
     });
-    this.viewmodel.camera.fov = Math.min(this.baseFov, 80);
-    this.viewmodel.camera.updateProjectionMatrix();
+    const vfov = Math.min(this.baseFov, 80);
+    if (this.viewmodel.camera.fov !== vfov) { this.viewmodel.camera.fov = vfov; this.viewmodel.camera.updateProjectionMatrix(); }
 
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
@@ -959,21 +1030,54 @@ export class Game {
     this.hud.showBuy(on);
   }
 
+  // Renders a 3D portrait of an agent into a 2D canvas (agent select cards).
+  renderPortrait(agent, cv, w = 180, h = 240) {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x10151d);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3f4a, 1.5));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.position.set(-2, 3, -3);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(agent.accent, 2.5);
+    rim.position.set(2, 2, 3);
+    scene.add(rim);
+    const m = buildCharacter(agent, ALLY_LIGHT);
+    setCharacterGun(m, 'talon');
+    animateCharacter(m, { speed: 0, crouch: 0, pitch: -0.05, onGround: true }, 0);
+    m.root.rotation.y = -0.55;
+    scene.add(m.root);
+    const cam = new THREE.PerspectiveCamera(28, w / h, 0.1, 20);
+    cam.position.set(0.35, 1.35, -3.1);
+    cam.lookAt(0, 1.05, 0);
+    const r = this.renderer, pr = r.getPixelRatio();
+    r.setScissorTest(true);
+    r.setViewport(0, 0, w, h);
+    r.setScissor(0, 0, w, h);
+    r.clear();
+    r.render(scene, cam);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, window.innerWidth, window.innerHeight);
+    cv.width = Math.round(w * pr); cv.height = Math.round(h * pr);
+    const src = r.domElement;
+    cv.getContext('2d').drawImage(src, 0, src.height - cv.height, cv.width, cv.height, 0, 0, cv.width, cv.height);
+  }
+
+  // Slow orbit over the map behind the menus.
+  renderIdle(t, dt) {
+    const a = t * 0.05;
+    this.camera.fov = 60; this.camera.updateProjectionMatrix();
+    this.camera.position.set(Math.sin(a) * 55, 34, Math.cos(a) * 45);
+    this.camera.lookAt(0, 0, 0);
+    this.map.update(dt);
+    this.renderer.clear();
+    this.renderer.render(this.scene, this.camera);
+  }
+
   finishMatch() {
     this.running = false;
     this.paused = true;
     const won = this.score[this.playerTeam] > this.score[1 - this.playerTeam];
     if (this.onMatchEnd) this.onMatchEnd(won, this.score[this.playerTeam], this.score[1 - this.playerTeam], this.player);
-  }
-
-  // Slow orbit over the map behind the main menu.
-  renderIdle(t) {
-    const a = t * 0.05;
-    this.camera.fov = 60; this.camera.updateProjectionMatrix();
-    this.camera.position.set(Math.sin(a) * 60, 42, Math.cos(a) * 50);
-    this.camera.lookAt(0, 0, 0);
-    this.renderer.clear();
-    this.renderer.render(this.scene, this.camera);
   }
 
   stop() {
@@ -982,4 +1086,17 @@ export class Game {
     this.buyOpen = false;
     this.hud.showBuy(false);
   }
+}
+
+export { ABILITY_INFO };
+
+function disposeScene(scene) {
+  scene.traverse((o) => {
+    if (o.geometry && !o.geometry.parameters) o.geometry.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
+      if (m.map && m.map.isCanvasTexture) m.map.dispose();
+      if (m.emissiveMap && m.emissiveMap.isCanvasTexture) m.emissiveMap.dispose();
+    }
+  });
 }

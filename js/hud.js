@@ -1,5 +1,6 @@
 import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js';
 import { fmtTime } from './util.js';
+import { ABILITY_INFO, iconSvg } from './agents.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,7 +12,7 @@ export class Hud {
       'minimap', 'killfeed', 'crosshair', 'hitmarker', 'dmgIndicator', 'redFlash', 'scope', 'centerMsg', 'subMsg',
       'progressWrap', 'progressLabel', 'progressFill', 'hint', 'spectate', 'armorVal', 'healthVal', 'credits',
       'coreTag', 'weaponName', 'ammoMag', 'ammoReserve', 'slots', 'scoreboard', 'buyMenu', 'buyItems', 'buyCredits',
-      'sideTag', 'fps']) {
+      'sideTag', 'fps', 'abilityBar', 'flashOverlay', 'odTint', 'smokeOverlay', 'buyAbilities', 'agentTag']) {
       this.el[id] = $(id);
     }
     this.ch = {
@@ -20,17 +21,78 @@ export class Hud {
     };
     this.cache = {};
     this.hitT = 0; this.dmgT = 0; this.flashT = 0; this.msgT = 0;
-    this.mmScale = 4.5;
-    const map = game.map;
+    this.mmScale = 7;
+    this.mmCtx = this.el.minimap.getContext('2d');
+    this.buildBuyMenu();
+  }
+
+  setMap(map) {
+    this.map = map;
     const mm = this.el.minimap;
     mm.width = map.W * this.mmScale; mm.height = map.H * this.mmScale;
-    this.mmCtx = mm.getContext('2d');
     this.mmBase = document.createElement('canvas');
     this.mmBase.width = mm.width; this.mmBase.height = mm.height;
     map.drawMinimap(this.mmBase.getContext('2d'), this.mmScale);
     this.el.sideTag.style.left = `${mm.width + 22}px`;
-    this.buildBuyMenu();
   }
+
+  // Builds the ability bar and the ability section of the buy menu for the player's agent.
+  setAgent(agent) {
+    this.agent = agent;
+    const accent = '#' + agent.accent.toString(16).padStart(6, '0');
+    this.el.agentTag.innerHTML = `<span style="color:${accent}">${agent.name}</span> · ${agent.role}`;
+    this.el.abilityBar.innerHTML = ['q', 'e', 'f', 'x'].map((k) => {
+      const kit = agent.kit[k];
+      return `<div class="ab ${k === 'x' ? 'ult' : ''}" data-k="${k}" style="--ac:${accent}">
+        <div class="ic">${iconSvg(kit.type)}</div>
+        <div class="key">${k.toUpperCase()}</div>
+        <div class="pips"></div>
+      </div>`;
+    }).join('');
+    this.abEls = {};
+    for (const n of this.el.abilityBar.children) this.abEls[n.dataset.k] = { node: n, pips: n.querySelector('.pips') };
+    this.el.buyAbilities.innerHTML = '';
+    this.abilityEntries = ['q', 'f'].map((k) => {
+      const kit = agent.kit[k], info = ABILITY_INFO[kit.type];
+      const n = document.createElement('div');
+      n.className = 'buy-item ability';
+      n.innerHTML = `<div class="ab-ic" style="color:${accent}">${iconSvg(kit.type)}</div><span class="nm">${info.name} <span class="key">[${k.toUpperCase()}]</span></span>
+        <span class="pr">¤ ${kit.price} <span class="chg"></span></span><span class="ds">${info.desc}</span>`;
+      n.addEventListener('mousedown', (e) => { e.stopPropagation(); this.game.buy('ab:' + k); });
+      this.el.buyAbilities.appendChild(n);
+      return { k, kit, node: n, chg: n.querySelector('.chg') };
+    });
+  }
+
+  updateAbilities(c) {
+    if (!this.abEls || !c.agent) return;
+    for (const k of ['q', 'e', 'f']) {
+      const kit = c.agent.kit[k], n = this.abEls[k];
+      const sig = `${c.charges[k]}/${kit.max}`;
+      if (n.sig !== sig) {
+        n.sig = sig;
+        n.pips.innerHTML = Array.from({ length: kit.max }, (_, i) => `<i class="${i < c.charges[k] ? 'on' : ''}"></i>`).join('');
+        n.node.classList.toggle('empty', c.charges[k] <= 0);
+      }
+    }
+    const x = this.abEls.x, cost = c.agent.kit.x.cost;
+    const sig = `${c.ult}/${cost}`;
+    if (x.sig !== sig) {
+      x.sig = sig;
+      x.pips.innerHTML = c.ult >= cost ? '<b>READY</b>' : Array.from({ length: cost }, (_, i) => `<i class="${i < c.ult ? 'on' : ''}"></i>`).join('');
+      x.node.classList.toggle('ready', c.ult >= cost);
+      x.node.classList.toggle('empty', c.ult < cost);
+    }
+  }
+
+  flash(amount) {
+    if (this.cache.flash === amount) return;
+    this.cache.flash = amount;
+    this.el.flashOverlay.style.opacity = amount;
+  }
+
+  overdrive(on) { this.set('od', this.el.odTint, on ? 'on' : '', 'className'); }
+  inSmoke(on) { this.set('sm', this.el.smokeOverlay, on ? 'on' : '', 'className'); }
 
   set(key, el, value, prop = 'textContent') {
     if (this.cache[key] === value) return;
@@ -90,6 +152,7 @@ export class Hud {
     }).join('');
     this.set('slots', this.el.slots, slotsHtml, 'innerHTML');
 
+    this.updateAbilities(watch);
     this.set('cr', this.el.credits, g.phase === 'buy' && p.alive ? `¤ ${p.credits}  ·  press B to buy` : `¤ ${p.credits}`);
     this.el.coreTag.classList.toggle('hidden', !(p.alive && p.hasCore));
 
@@ -186,6 +249,7 @@ export class Hud {
     ctx.drawImage(this.mmBase, 0, 0);
     const toX = (x) => (x - map.ox) / 3 * s, toZ = (z) => (z - map.oz) / 3 * s;
 
+    g.abilities.drawMinimap(ctx, toX, toZ, s);
     const core = g.core;
     if (core.state === 'planted' || core.state === 'dropped') {
       const visible = core.state === 'planted' || g.sideOf(g.playerTeam) === 'ATK';
@@ -212,8 +276,8 @@ export class Hud {
         ctx.restore();
         continue;
       }
-      ctx.fillStyle = ally ? '#2ec4b6' : '#ff5a5f';
-      ctx.beginPath(); ctx.arc(x, z, 3.6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = ally ? '#2ee6d6' : '#ff3048';
+      ctx.beginPath(); ctx.arc(x, z, 4.2, 0, Math.PI * 2); ctx.fill();
       if (c.hasCore && ally) { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.stroke(); }
       // view direction tick
       ctx.strokeStyle = ally ? 'rgba(46,196,182,0.8)' : 'rgba(255,90,95,0.8)';
@@ -231,7 +295,7 @@ export class Hud {
       const rows = g.combatants.filter((c) => c.team === team)
         .sort((a, b) => b.kills - a.kills)
         .map((c) => `<tr class="${c.alive ? '' : 'dead'} ${c.isPlayer ? 'me' : ''}">
-          <td>${c.name}${c.hasCore && team === g.playerTeam ? ' ◆' : ''}</td><td>${c.kills}</td><td>${c.deaths}</td>
+          <td>${c.name} <span class="ag">${c.agent.name}</span>${c.hasCore && team === g.playerTeam ? ' ◆' : ''}</td><td>${c.kills}</td><td>${c.deaths}</td>
           <td>${team === g.playerTeam ? '¤ ' + c.credits : ''}</td>
           <td>${team === g.playerTeam ? (c.inv.primary ? c.inv.primary.def.name : c.inv.secondary?.def.name ?? '') : ''}</td></tr>`)
         .join('');
@@ -261,6 +325,8 @@ export class Hud {
   }
 
   buyKey(index) {
+    if (index === 6) { this.game.buy('ab:q'); return; }
+    if (index === 7) { this.game.buy('ab:f'); return; }
     const it = this.buyEntries[index];
     if (it) this.game.buy(it.id);
   }
@@ -268,6 +334,12 @@ export class Hud {
   refreshBuyMenu() {
     const p = this.game.player;
     this.el.buyCredits.textContent = `¤ ${p.credits}`;
+    for (const it of this.abilityEntries || []) {
+      const full = p.charges[it.k] >= it.kit.max;
+      it.chg.textContent = `${p.charges[it.k]}/${it.kit.max}`;
+      it.node.classList.toggle('owned', full);
+      it.node.classList.toggle('poor', !full && p.credits < it.kit.price);
+    }
     for (const it of this.buyEntries) {
       const owned = (it.def.slot && p.inv[it.def.slot]?.def.id === it.id) ||
         (it.id === 'light' && p.armor >= 25) || (it.id === 'heavy' && p.armor >= 50);

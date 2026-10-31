@@ -37,6 +37,7 @@ export class BotBrain {
       spot: null, postPlantSpot: null,
       idleLookT: 0,
       rotateDelay: rand(2, 9), rotSpot: null,
+      utilCD: rand(0.5, 2), execDone: false, smokedEarly: false, walled: false,
     };
     // Defensive hold spot.
     if (role.kind === 'hold') {
@@ -220,8 +221,24 @@ export class BotBrain {
     ai.thinkT -= dt;
     if (ai.thinkT <= 0) {
       ai.thinkT = 0.08 + Math.random() * 0.06;
-      this.perceive(c);
+      if (c.blind > 0) { ai.target = null; } else this.perceive(c);
       this.plan(c);
+      this.utility(c, 0.11);
+    }
+
+    // Blinded: back off and wait it out.
+    if (c.blind > 0.25) {
+      c.wx = Math.sin(c.yaw); c.wz = Math.cos(c.yaw);
+      c.walking = true;
+      return;
+    }
+    // Get out of enemy fire.
+    const fire = g.abilities.inFire(c);
+    if (fire && !c.action) {
+      const dx = c.pos.x - fire.pos.x, dz = c.pos.z - fire.pos.z, d = Math.hypot(dx, dz) || 1;
+      c.wx = dx / d; c.wz = dz / d;
+      if (ai.target?.alive) this.fight(c, ai.target, dt, true);
+      return;
     }
 
     const w = c.weapon;
@@ -328,7 +345,7 @@ export class BotBrain {
     c.pitch += clamp((pitch - c.pitch) * Math.min(1, dt * 10), -step, step);
   }
 
-  fight(c, t, dt) {
+  fight(c, t, dt, keepMoving = false) {
     const g = this.game, ai = c.ai, sk = g.skill, w = c.weapon;
     const aimY = ai.aimPart === 'head' ? 1.67 - 0.5 * t.crouch : 1.2 - 0.45 * t.crouch;
     const dx = t.pos.x - c.pos.x, dz = t.pos.z - c.pos.z;
@@ -368,7 +385,7 @@ export class BotBrain {
     ai.burstPause -= dt;
 
     let shooting = false;
-    if (ai.reactT <= 0 && errAng < tol && w.reloadT <= 0 && w.mag > 0 && ai.burstPause <= 0 && c.switchT <= 0) {
+    if (c.blind <= 0 && ai.reactT <= 0 && errAng < tol && w.reloadT <= 0 && w.mag > 0 && ai.burstPause <= 0 && c.switchT <= 0) {
       ai.burstMax = w.def.auto ? (dist > 28 ? 2 : dist > 14 ? 4 : 9) : 1;
       if (g.tryShoot(c)) {
         shooting = true;
@@ -384,11 +401,119 @@ export class BotBrain {
     ai.strafeT -= dt;
     if (ai.strafeT <= 0) { ai.strafeT = rand(0.35, 0.9); ai.strafeDir = Math.random() < 0.5 ? -1 : 1; }
     const firingWindow = ai.reactT <= 0 && ai.burstPause <= 0;
+    if (keepMoving) return;
     if (!firingWindow && !shooting && dist > 4) {
       const rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw);
       c.wx = rx * ai.strafeDir; c.wz = rz * ai.strafeDir;
     }
     if (g.skill === DIFFICULTY.hard && dist > 20 && firingWindow) c.crouching = Math.random() < 0.4;
+  }
+
+  // ---- abilities -----------------------------------------------------------
+
+  utility(c, step) {
+    const g = this.game, ai = c.ai, ab = g.abilities, kit = c.agent.kit;
+    if (g.phase !== 'live' || c.blind > 0 || c.action) return;
+    ai.utilCD -= step;
+    if (ai.utilCD > 0) return;
+    const side = g.sideOf(c.team), map = g.map, core = g.core;
+    const keysFor = (type) => ['q', 'e', 'f'].filter((k) => kit[k].type === type && ab.canCast(c, k));
+    const use = (type, target) => {
+      const k = keysFor(type)[0];
+      if (!k) return false;
+      const ok = type === 'wall' && target ? this.withAim(c, target, () => ab.cast(c, k)) : ab.cast(c, k, target);
+      if (ok) ai.utilCD = rand(1.2, 2.5);
+      return ok;
+    };
+    const ultType = kit.x.type, ultReady = ab.canCast(c, 'x');
+    const ult = (target) => {
+      const ok = target && (ultType === 'smokeline') ? this.withAim(c, target, () => ab.cast(c, 'x')) : ab.cast(c, 'x', target);
+      if (ok) ai.utilCD = rand(1.5, 3);
+      return ok;
+    };
+    const dist = (p) => Math.hypot(p.x - c.pos.x, p.z - c.pos.z);
+
+    // healing
+    if (!ai.target && c.health < 55 && use('heal')) return;
+    if (ultReady && ultType === 'teamheal') {
+      const hurt = g.combatants.filter((o) => o.alive && o.team === c.team && o.health < 50).length;
+      if (hurt >= 2 || (c.health < 35 && !ai.target)) { ult(); return; }
+    }
+    // fight ults
+    if (ultReady && ai.target && (ultType === 'overdrive' || (ultType === 'blackout' && ai.dist < 35))) { ult(); return; }
+
+    if (side === 'ATK') {
+      if (core.state === 'planted') {
+        const defuser = g.combatants.find((o) => o.alive && o.action?.type === 'defuse');
+        if (defuser && dist(core.pos) < 35) {
+          if (use('molly', core.pos)) return;
+          if (ultReady && ultType === 'inferno' && ult(core.pos)) return;
+          if (use('flash', core.pos)) return;
+        }
+        return;
+      }
+      // the site execute: smoke the defender side, scout, flash, dash in
+      const s = map.sites[ai.role.site];
+      const ds = dist(s.center);
+      const routeDone = ai.routeIdx >= (ai.role.route || []).length;
+      if (!ai.execDone && routeDone && ds < 24 && ds > 5) {
+        ai.execDone = true;
+        const toward = map.center(map.dCenter[0], map.dCenter[1]).sub(s.center).setY(0).normalize();
+        const smokeAt = s.center.clone().addScaledVector(toward, 4);
+        smokeAt.y = 0;
+        if (ultReady && ultType === 'smokeline') ult(smokeAt);
+        else use('smoke', smokeAt);
+        if (ultReady && (ultType === 'reveal' || ultType === 'blackout')) ult();
+        use('recon', s.center) || use('flash', s.center);
+        if (keysFor('dash').length) ab.cast(c, keysFor('dash')[0]);
+        ai.utilCD = 1.5;
+        return;
+      }
+      // covering wall while planting
+      if (c.hasCore && ai.wantAction && !ai.walled && keysFor('wall').length) {
+        ai.walled = true;
+        use('wall', map.center(map.dCenter[0], map.dCenter[1]));
+        return;
+      }
+    } else {
+      if (core.state === 'planted') {
+        if (ultReady && ultType === 'reveal') { ult(); return; }
+        if (dist(core.pos) < 30 && dist(core.pos) > 6 && !ai.target) {
+          const site = map.sites[core.site];
+          if (use('recon', site.center) || use('flash', core.pos) || use('smoke', site.center)) return;
+        }
+        return;
+      }
+      // early-round smoke on the lane we're watching
+      if (!ai.smokedEarly && g.phaseT < 95 && ai.goal?.type === 'hold' && this.arrived(c, 1.5) && ai.holdYaw !== null) {
+        ai.smokedEarly = true;
+        if (Math.random() < 0.5) {
+          const t = c.pos.clone();
+          t.x -= Math.sin(ai.holdYaw) * 11; t.z -= Math.cos(ai.holdYaw) * 11; t.y = 0;
+          if (g.canSee(new THREE.Vector3(c.pos.x, 1.5, c.pos.z), new THREE.Vector3(t.x, 1.5, t.z))) use('smoke', t);
+        }
+        return;
+      }
+      // enemies heard / just lost: utility at them
+      if (!ai.target && ai.lastKnown && ai.lostT < 3) {
+        const d = dist(ai.lastKnown);
+        if (d < 28 && d > 5) {
+          if (use('recon', ai.lastKnown) || use('molly', ai.lastKnown) || use('flash', ai.lastKnown)) return;
+          if (!ai.walled && d < 14 && use('wall', ai.lastKnown)) { ai.walled = true; return; }
+          if (ultReady && (ultType === 'inferno' || ultType === 'reveal')) { ult(ai.lastKnown); return; }
+        }
+      }
+    }
+  }
+
+  // Temporarily look at a point while casting (walls/lines are placed along the view).
+  withAim(c, target, fn) {
+    const y = c.yaw, p = c.pitch;
+    c.yaw = yawTo(target.x - c.pos.x, target.z - c.pos.z);
+    c.pitch = -0.25;
+    const ok = fn();
+    c.yaw = y; c.pitch = p;
+    return ok;
   }
 
   // Sounds and damage make bots look toward the source.

@@ -197,6 +197,85 @@ export class Sound {
     notes.forEach((f, i) => this.tone(o, t + i * 0.12, 'triangle', f, f, 0.2, 0.25));
   }
 
+  // ---- abilities ----
+
+  throw(pos = null) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 30); if (!sp) return;
+    this.noise(this.out(sp), this.ctx.currentTime, 0.25, 'bandpass', 1200, 1.5, 0.2, 0.22);
+  }
+
+  bounce(pos) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 25); if (!sp) return;
+    this.tone(this.out(sp), this.ctx.currentTime, 'triangle', 900, 600, 0.12, 0.05);
+  }
+
+  smoke(pos) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 60) || { gain: 0.05, pan: 0, muffle: 0.3 };
+    this.noise(this.out(sp), this.ctx.currentTime, 1.2, 'lowpass', 1800 * sp.muffle, 0.5, 0.5, 1.1);
+  }
+
+  flash(pos) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 70) || { gain: 0.05, pan: 0, muffle: 0.3 };
+    const t = this.ctx.currentTime, o = this.out(sp);
+    this.noise(o, t, 0.3, 'highpass', 2500, 0.7, 0.7, 0.25);
+    this.tone(o, t, 'sine', 3200, 2800, 0.25, 0.6);
+  }
+
+  fire(pos) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 50) || { gain: 0.05, pan: 0, muffle: 0.3 };
+    const t = this.ctx.currentTime, o = this.out(sp);
+    this.noise(o, t, 0.8, 'lowpass', 900, 0.7, 0.6, 0.7);
+    for (let i = 0; i < 6; i++) this.noise(o, t + 0.1 + i * 0.12, 0.05, 'bandpass', 2500 + Math.random() * 2000, 3, 0.2, 0.04);
+  }
+
+  recon(pos) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 60) || { gain: 0.15, pan: 0 };
+    sp.gain = Math.max(sp.gain, 0.15);
+    const t = this.ctx.currentTime, o = this.out(sp);
+    this.tone(o, t, 'sine', 1400, 1400, 0.2, 0.12);
+    this.tone(o, t + 0.14, 'sine', 2100, 2100, 0.15, 0.2);
+  }
+
+  dash(pos = null) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 30); if (!sp) return;
+    this.noise(this.out(sp), this.ctx.currentTime, 0.3, 'bandpass', 700, 0.8, 0.5, 0.28);
+  }
+
+  heal(pos = null) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 30); if (!sp) return;
+    const t = this.ctx.currentTime, o = this.out(sp);
+    [660, 880, 1100].forEach((f, i) => this.tone(o, t + i * 0.08, 'sine', f, f, 0.15, 0.3));
+  }
+
+  wall(pos = null) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 50); if (!sp) return;
+    const t = this.ctx.currentTime, o = this.out(sp);
+    this.tone(o, t, 'sawtooth', 80, 160, 0.3, 0.4);
+    this.noise(o, t, 0.3, 'lowpass', 600, 0.7, 0.4, 0.3);
+  }
+
+  ult(pos = null) {
+    if (!this.ctx) return;
+    const sp = this.spatial(pos, 90) || { gain: 0.15, pan: 0 };
+    const t = this.ctx.currentTime, o = this.out(sp);
+    this.tone(o, t, 'sawtooth', 110, 220, 0.35, 0.8);
+    this.tone(o, t + 0.05, 'square', 220, 440, 0.12, 0.7);
+  }
+
+  burn() {
+    if (!this.ctx) return;
+    this.noise(this.out({ gain: 1, pan: 0 }), this.ctx.currentTime, 0.15, 'bandpass', 3000, 2, 0.15, 0.12);
+  }
+
   explosion(pos) {
     if (!this.ctx) return;
     const sp = this.spatial(pos, 200) || { gain: 0.1, pan: 0 };

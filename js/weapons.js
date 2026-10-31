@@ -58,6 +58,7 @@ export const BUY_LIST = ['bolt', 'wasp', 'talon', 'lynx'];
 // Spray pattern: climbs straight up for vCap shots, then slowly rises while
 // swaying left and right.
 export function recoilOffset(def, idx) {
+  if (def.melee) return { pitch: 0, yaw: 0 };
   const cap = def.vCap;
   const pitch = def.vKick * Math.min(idx, cap) + def.vKick * 0.25 * Math.max(0, idx - cap);
   const over = idx - cap;

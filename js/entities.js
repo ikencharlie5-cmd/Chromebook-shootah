@@ -8,7 +8,7 @@ export const GRAVITY = 20;
 export const JUMP_VEL = 7;
 
 export class Combatant {
-  constructor(id, name, team, isPlayer = false) {
+  constructor(id, name, team, isPlayer = false, agent = null) {
     this.id = id;
     this.name = name;
     this.team = team;
@@ -39,6 +39,17 @@ export class Combatant {
     this.model = null;
     this.ai = null;
     this.deadT = 0;
+    this.agent = agent;
+    this.charges = { q: 0, e: 0, f: 0 };
+    this.ult = 0;
+    this.blind = 0;
+    this.blindMax = 0;
+    this.healT = 0;
+    this.dashT = 0;
+    this.overdriveT = 0;
+    this.revealUntil = 0;
+    this.castT = 0;
+    this.wx = 0; this.wz = 0;
     this.resetLoadout();
   }
 
@@ -46,6 +57,17 @@ export class Combatant {
     this.inv = { primary: null, secondary: makeWeaponState('pip'), melee: makeWeaponState('knife') };
     this.slot = 'secondary';
     this.armor = 0;
+  }
+
+  // Signature ability refills each round; bought charges carry over.
+  refillSignature() {
+    if (!this.agent) return;
+    this.charges.e = this.agent.kit.e.free;
+  }
+
+  clearStatus() {
+    this.blind = 0; this.blindMax = 0; this.healT = 0; this.dashT = 0;
+    this.overdriveT = 0; this.revealUntil = 0; this.castT = 0;
   }
 
   get weapon() { return this.inv[this.slot]; }
@@ -133,6 +155,11 @@ export function moveBody(map, c, dt, restrict) {
 // Accelerate horizontal velocity toward a wished direction (wx, wz normalized or zero).
 export function applyMovement(c, wx, wz, maxSpeed, dt) {
   const v = c.vel;
+  if (c.dashT > 0) {
+    c.dashT -= dt;
+    v.y -= GRAVITY * dt;
+    return;
+  }
   if (c.onGround) {
     const tx = wx * maxSpeed, tz = wz * maxSpeed;
     const accel = (wx || wz) ? 45 : 38;
@@ -155,5 +182,6 @@ export function speedFor(c) {
   let s = c.crouching ? CROUCH_SPEED : c.walking ? WALK_SPEED : RUN_SPEED;
   if (w) s *= w.def.speedMul;
   if (c.scoped) s *= 0.6;
+  if (c.overdriveT > 0) s *= 1.2;
   return s;
 }

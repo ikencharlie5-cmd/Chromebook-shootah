@@ -1,8 +1,8 @@
 # Chromebook Shootah
 
-A 5v5 tactical first-person shooter that runs in the browser — built to be light enough for a Chromebook.
-You and four bot teammates take on five bots on the map **Outpost**: attack to plant the Core at site A or B,
-or defend and defuse it. First team to 7 rounds wins; sides swap after round 6.
+A 3v3 tactical first-person shooter with agents and abilities that runs in the browser — built to be light enough
+for a Chromebook. Pick one of six agents, team up with two bots, and fight three bots on one of five maps.
+Attack to plant the Core at site A or B, or defend and defuse it. First team to 7 rounds wins; sides swap after round 6.
 
 ## Play it
 
@@ -30,15 +30,49 @@ then open <http://localhost:8000>.
 | C | Crouch |
 | Space | Jump |
 | R | Reload |
-| 1 / 2 / 3, Q, mouse wheel | Primary / pistol / knife, last weapon, cycle |
+| 1 / 2 / 3, mouse wheel | Primary / pistol / knife, cycle |
+| Q / E / F | Abilities (E is your free signature ability) |
+| X | Ultimate |
 | Right click | Scope (sniper) |
-| B | Buy menu (buy phase only) — or press 1–6 inside it |
-| E (hold) | Plant / defuse the Core |
+| B | Buy menu (buy phase only) — or press 1–8 inside it |
+| 4 (hold) | Plant / defuse the Core |
 | Tab | Scoreboard |
 | Esc | Pause + settings |
 
 Crouch is on **C** because Ctrl+W closes the tab on a Chromebook. If you turn on *Fullscreen when playing* in
 settings, the game also locks the keyboard so Ctrl works for crouching.
+
+## Agents
+
+Each agent has three abilities and an ultimate. **E** (signature) refills for free every round; **Q** and **F** charges
+are bought in the buy menu and carry over between rounds. Ultimates charge from kills, deaths, plants and defuses.
+
+| Agent | Role | Q | E (free) | F | X (ultimate) |
+| --- | --- | --- | --- | --- | --- |
+| Haze | Controller | Incendiary | Smoke ×2 | Barrier wall | Nightfall — line of 4 smokes |
+| Vesper | Sentinel | Barrier wall | Mend (heal) | Recon dart | Lifeline — heal team + shields |
+| Flare | Initiator | Flashbang ×2 | Recon dart | Smoke | Overwatch — reveal all enemies |
+| Ember | Duelist | Incendiary | Dash | Flashbang | Inferno — huge firestorm |
+| Jolt | Duelist | Flashbang ×2 | Dash ×2 | Mend (heal) | Overdrive — speed, fire rate, accuracy |
+| Rook | Initiator | Smoke | Flashbang ×2 | Incendiary | Blackout — blind everyone who sees you |
+
+- **Smokes** land where you aim and block vision (for bots too).
+- **Flashes** pop after a moment and blind enemies who are looking at them — turn away!
+- **Incendiaries** burn enemies standing in the fire; great for stopping a defuse.
+- **Recon darts** stick to surfaces and pulse twice, marking enemies through walls.
+- **Barriers** block bullets and movement until they time out or are shot down.
+
+## Maps
+
+All maps are compact two-site layouts built for 3v3, and the map is picked at random each match.
+
+| Map | Theme |
+| --- | --- |
+| Neon District | Night city, neon signs, rain |
+| Sunken Temple | Sandstone ruins, palms, sunset |
+| Frostbite Base | Snowy military base, shipping containers |
+| Overgrowth | Jungle-covered research lab, fireflies |
+| Canal Quarter | Venice-style canals, bridges and gondolas |
 
 ## How it plays
 
@@ -48,11 +82,10 @@ settings, the game also locks the keyboard so Ctrl works for crouching.
 - **Economy:** ¤800 at the start of each half. +¤200 per kill, +¤3000 for a round win, ¤1900–2900 for a loss
   (more for losing streaks), +¤300 to attackers for a plant. Survivors keep their guns and shield.
 - **Gunplay:** first shots are accurate when you're standing still; running, jumping and spraying all add spread.
-  Rifles climb straight up and then sway side to side — pull down to control them. The crosshair gap shows your
-  real current spread. Headshots deal big damage (the Talon rifle one-taps).
+  Rifles climb straight up and then sway side to side — pull down to control them. Headshots deal big damage.
 - **Sound matters:** running footsteps and gunfire are positional, and bots hear them too. Walk to stay quiet.
-- **Bots** take different routes, hold angles, rotate between sites, pick up a dropped Core, and defuse.
-  Difficulty changes their reaction time, aim and spray control.
+- **Bots** take different routes, execute onto sites with smokes/flashes/recon, hold angles, rotate, heal,
+  molly the Core when you defuse, and use their ultimates. Difficulty changes their reaction time and aim.
 
 | Weapon | Price | Notes |
 | --- | --- | --- |
@@ -66,19 +99,24 @@ settings, the game also locks the keyboard so Ctrl works for crouching.
 ## Code layout
 
 ```
-index.html, css/style.css   UI, menus and HUD markup
+index.html, css/style.css   UI, menus, agent select and HUD markup
 lib/three.module.min.js     three.js r170 (bundled so it works offline / on locked-down networks)
-js/main.js                  boot, settings, input, menus, main loop
+js/main.js                  boot, settings, input, menus, agent select, main loop
 js/game.js                  round flow, economy, shooting, damage, objective, rendering
-js/map.js                   ASCII map → geometry, colliders, sites, A* pathfinding
-js/bots.js                  bot AI (perception, aiming, objectives, movement)
+js/maps.js                  the five map layouts (ASCII grids)
+js/map.js                   layout → geometry, colliders, sites, A* pathfinding, bot routes
+js/theme.js                 per-map art: procedural textures, skies, props, backdrops, weather
+js/agents.js                agents, ability kits, ability icons
+js/abilities.js             smokes, flashes, fire, recon, walls, heals, dashes, ultimates
+js/bots.js                  bot AI (perception, aiming, objectives, ability usage)
 js/entities.js              players/bots, hitboxes, movement + collision
 js/weapons.js               weapon stats and recoil patterns
-js/viewmodel.js             first-person gun
-js/models.js                low-poly characters, guns, the Core
+js/viewmodel.js             first-person gun and agent-styled arms
+js/models.js                agent characters, guns, the Core
 js/effects.js               tracers, bullet holes, particles, explosion
-js/hud.js                   HUD, minimap, killfeed, scoreboard, buy menu
+js/hud.js                   HUD, ability bar, minimap, killfeed, scoreboard, buy menu
 js/audio.js                 synthesized WebAudio sound effects
 ```
 
-The map is a plain ASCII grid at the top of `js/map.js`, so it's easy to edit.
+Maps are plain ASCII grids in `js/maps.js`, so they're easy to edit. `game.startMatch(agentId, mapId)` accepts a
+map id, ready for matchmaking to choose the map later.

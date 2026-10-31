@@ -1,5 +1,6 @@
 import { Game } from './game.js';
 import { Sound } from './audio.js';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -7,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 
 const DEFAULTS = {
   difficulty: 'normal', sensitivity: 1, fov: 90, volume: 0.6, quality: 'medium',
-  crossColor: '#00ff9c', fullscreen: false, showFps: false,
+  crossColor: '#00ff9c', fullscreen: false, showFps: false, agent: 'haze',
 };
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('cbs-settings') || '{}') }; } catch { /* ignore */ }
@@ -58,7 +59,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyB' && !e.repeat && !game.paused) {
     if (game.buyOpen) closeBuy(); else openBuy();
   }
-  if (game.buyOpen && /^Digit[1-6]$/.test(e.code)) game.hud.buyKey(Number(e.code.slice(5)) - 1);
+  if (game.buyOpen && /^Digit[1-8]$/.test(e.code)) game.hud.buyKey(Number(e.code.slice(5)) - 1);
   if (e.code === 'Escape' && game.buyOpen) closeBuy(false);
   // with keyboard lock (fullscreen) Escape reaches the page instead of the browser
   if (e.code === 'Escape' && locked() && navigator.keyboard?.lock) document.exitPointerLock();
@@ -160,20 +161,80 @@ function enterFullscreen() {
     .catch(() => {});
 }
 
+// ---- agent select -------------------------------------------------------------
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+let picked = AGENT_BY_ID[settings.agent] ? settings.agent : AGENTS[0].id;
+let portraitsDone = false;
+
+function showAgentDetail(agent) {
+  const keys = ['q', 'e', 'f', 'x'];
+  $('agentDetail').style.setProperty('--ac', hex(agent.accent));
+  $('agentDetail').innerHTML = `<p class="bio"><b style="color:${hex(agent.accent)}">${agent.name}</b> · ${agent.role} — ${agent.bio}</p>
+    <div class="abil">${keys.map((k) => {
+      const kit = agent.kit[k], info = ABILITY_INFO[kit.type];
+      const cost = k === 'x' ? `${kit.cost} points` : kit.free ? `free · ${kit.free} per round` : `¤${kit.price} · max ${kit.max}`;
+      return `<div>${iconSvg(kit.type)}<b><span class="k">${k.toUpperCase()}</span>${info.name}</b>${info.desc.replace('ULTIMATE · ', '')}<br><span class="c">${cost}</span></div>`;
+    }).join('')}</div>`;
+}
+
+function buildAgentSelect() {
+  const grid = $('agentGrid');
+  if (!grid.children.length) {
+    for (const a of AGENTS) {
+      const card = document.createElement('div');
+      card.className = 'agent-card';
+      card.dataset.id = a.id;
+      card.style.setProperty('--ac', hex(a.accent));
+      card.innerHTML = `<canvas></canvas><div class="nm">${a.name.toUpperCase()}</div><div class="rl">${a.role}</div>`;
+      card.addEventListener('click', () => selectAgent(a.id));
+      card.addEventListener('dblclick', () => { selectAgent(a.id); startGame(); });
+      grid.appendChild(card);
+    }
+  }
+  if (!portraitsDone) {
+    for (const card of grid.children) game.renderPortrait(AGENT_BY_ID[card.dataset.id], card.querySelector('canvas'));
+    portraitsDone = true;
+  }
+  selectAgent(picked);
+}
+
+function selectAgent(id) {
+  picked = id;
+  for (const card of $('agentGrid').children) card.classList.toggle('sel', card.dataset.id === id);
+  showAgentDetail(AGENT_BY_ID[id]);
+}
+
+function openAgentSelect() {
+  sound.init();
+  $('menu').classList.add('hidden');
+  $('matchEnd').classList.add('hidden');
+  $('agentSelect').classList.remove('hidden');
+  buildAgentSelect();
+}
+
 function startGame() {
   sound.init();
   enterFullscreen();
+  settings.agent = picked;
+  saveSettings();
+  $('agentSelect').classList.add('hidden');
   $('menu').classList.add('hidden');
   $('matchEnd').classList.add('hidden');
   $('pauseMenu').classList.add('hidden');
   game.hud.show(true);
-  game.startMatch();
+  game.startMatch(picked);
   game.paused = true;
   lock();
 }
 
-$('playBtn').addEventListener('click', startGame);
-$('againBtn').addEventListener('click', startGame);
+$('playBtn').addEventListener('click', openAgentSelect);
+$('againBtn').addEventListener('click', openAgentSelect);
+$('lockBtn').addEventListener('click', startGame);
+$('backBtn').addEventListener('click', () => {
+  $('agentSelect').classList.add('hidden');
+  $('menu').classList.remove('hidden');
+});
 $('resumeBtn').addEventListener('click', () => {
   $('pauseMenu').classList.add('hidden');
   sound.init();
@@ -221,7 +282,7 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (game.running) game.frame(dt);
-  else game.renderIdle(now / 1000);
+  else game.renderIdle(now / 1000, dt);
   input.endFrame();
 
   fpsAcc += dt; fpsFrames++;

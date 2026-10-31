@@ -36,6 +36,7 @@ export class Effects {
       blood: new THREE.MeshBasicMaterial({ color: 0xb3122a }),
       spark: new THREE.MeshBasicMaterial({ color: 0xffd27a }),
       dust: new THREE.MeshBasicMaterial({ color: 0x9a8f80 }),
+      heal: new THREE.MeshBasicMaterial({ color: 0x5dffb0 }),
     };
     this.particles = [];
     for (let i = 0; i < 160; i++) {
