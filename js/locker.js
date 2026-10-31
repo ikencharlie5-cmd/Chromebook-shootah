@@ -1,6 +1,6 @@
 import { WEAPONS } from './weapons.js';
 import {
-  SKINS, RARITY, KNIFE_MODELS, LOCKER_WEAPONS, ROLL_COST, DUPLICATE_REFUND,
+  SKINS, RARITY, KNIFE_MODELS, LOCKER_WEAPONS, ROLL_COST, DUPLICATE_REFUND, KNIFE_CHANCE,
   loadProfile, saveProfile, itemKey, parseKey, equippedFor, randomItem,
 } from './skins.js';
 
@@ -22,7 +22,8 @@ export class Locker {
     $('rollClose').addEventListener('click', () => this.closeRoll());
     $('rollEquip').addEventListener('click', () => { if (this.lastRoll) this.equip(this.lastRoll.key); this.closeRoll(); });
     this.updateCoins();
-    $('lockerOdds').innerHTML = Object.values(RARITY).map((r) => `<span style="color:${r.color}">${r.name} ${r.weight}%</span>`).join(' · ');
+    $('lockerOdds').innerHTML = Object.values(RARITY).map((r) => `<span style="color:${r.color}">${r.name} ${r.weight}%</span>`).join(' · ') +
+      ` · <span class="knife-odds">★ Knife ${Math.round(KNIFE_CHANCE * 100)}%</span>`;
   }
 
   updateCoins() {
@@ -46,6 +47,7 @@ export class Locker {
   close() {
     $('locker').classList.add('hidden');
     $('menu').classList.remove('hidden');
+    this.onChange?.();
   }
 
   thumb(weapon, skin, model, w = 150, h = 84) {
@@ -112,6 +114,7 @@ export class Locker {
     const it = parseKey(key);
     this.profile.equipped[it.weapon] = key;
     saveProfile(this.profile);
+    this.onChange?.();
     this.sound.buy();
     this.renderWeapons();
     this.select(it.weapon);
@@ -132,7 +135,7 @@ export class Locker {
     const reel = $('reel');
     reel.style.transition = 'none';
     reel.style.transform = 'translateX(0px)';
-    reel.innerHTML = items.map((it) => `<div class="reel-card" style="--rc:${RARITY[it.rarity].color}">
+    reel.innerHTML = items.map((it) => `<div class="reel-card ${it.weapon === 'knife' ? 'knife' : ''}" style="--rc:${RARITY[it.rarity].color}">
       <img src="${this.thumb(it.weapon, it.skin, it.model, 150, 84)}"><b>${SKINS[it.skin].name}</b><span>${it.weapon === 'knife' ? '★ ' + KNIFE_MODELS[it.model] : weaponName(it.weapon)}</span></div>`).join('');
     $('rollResult').classList.add('hidden');
     $('rollOverlay').classList.remove('hidden');
@@ -168,12 +171,13 @@ export class Locker {
     this.lastRoll = it;
     const r = RARITY[it.rarity];
     $('rollResult').style.setProperty('--rc', r.color);
-    $('rollRarity').textContent = r.name.toUpperCase();
+    $('rollRarity').textContent = (it.weapon === 'knife' ? '★ KNIFE · ' : '') + r.name.toUpperCase();
     $('rollName').textContent = itemName(it);
     $('rollNote').textContent = dup ? `Duplicate — refunded ¤ ${DUPLICATE_REFUND}` : 'NEW! Added to your Locker';
     this.game.renderGunPreview(it.weapon, it.skin, it.model, $('rollCanvas'), 460, 240, 0.3);
     $('rollResult').classList.remove('hidden');
-    this.sound.announce(it.rarity === 'epic' || it.rarity === 'legendary');
+    this.sound.announce(it.weapon === 'knife' || it.rarity === 'epic' || it.rarity === 'legendary');
+    this.onChange?.();
   }
 
   closeRoll() {

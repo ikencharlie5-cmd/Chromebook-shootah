@@ -2,6 +2,7 @@ import { Game } from './game.js';
 import { Sound } from './audio.js';
 import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js';
 import { Locker } from './locker.js';
+import { SKINS, RARITY_ORDER, equippedFor } from './skins.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -166,6 +167,39 @@ function enterFullscreen() {
     .catch(() => {});
 }
 
+// ---- lobby ---------------------------------------------------------------------
+
+
+// Show off the player's best equipped item in the lobby.
+function lobbyHeld() {
+  let best = { weapon: 'talon', skin: 'factory', key: 'talon|factory' }, score = -1;
+  for (const w of ['talon', 'raptor', 'lynx', 'wasp', 'hornet', 'thunder', 'bastion', 'arbiter', 'needle', 'bolt', 'pip']) {
+    const e = equippedFor(locker.profile, w);
+    const sc = RARITY_ORDER.indexOf(SKINS[e.skin]?.rarity || 'common') + (e.skin === 'factory' ? -1 : 0);
+    if (sc > score) { score = sc; best = { weapon: w, skin: e.skin, key: `${w}|${e.skin}` }; }
+  }
+  return best;
+}
+
+function refreshLobby() {
+  const agent = AGENT_BY_ID[settings.agent] || AGENTS[0];
+  settings.agent = agent.id;
+  game.buildLobby(agent, lobbyHeld());
+  $('tagAgent').textContent = `${agent.name} · ${agent.role}`;
+  $('tagAgent').style.color = '#' + agent.accent.toString(16).padStart(6, '0');
+}
+locker.onChange = refreshLobby;
+refreshLobby();
+
+function openPanel(id) {
+  for (const p of ['settingsPanel', 'controlsPanel']) $(p).classList.toggle('hidden', p !== id);
+}
+$('settingsBtn').addEventListener('click', () => { placeSettings('settingsSlot'); openPanel('settingsPanel'); });
+$('controlsBtn').addEventListener('click', () => openPanel('controlsPanel'));
+for (const b of document.querySelectorAll('.panel-close')) b.addEventListener('click', () => openPanel(null));
+$('agentBtn').addEventListener('click', () => openAgentSelect(false));
+canvas.addEventListener('click', () => { if (!game.running && !$('menu').classList.contains('hidden')) openAgentSelect(false); });
+
 // ---- agent select -------------------------------------------------------------
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
@@ -193,7 +227,7 @@ function buildAgentSelect() {
       card.style.setProperty('--ac', hex(a.accent));
       card.innerHTML = `<canvas></canvas><div class="nm">${a.name.toUpperCase()}</div><div class="rl">${a.role}</div>`;
       card.addEventListener('click', () => selectAgent(a.id));
-      card.addEventListener('dblclick', () => { selectAgent(a.id); startGame(); });
+      card.addEventListener('dblclick', () => { selectAgent(a.id); if (selectStarts) startGame(); });
       grid.appendChild(card);
     }
   }
@@ -206,11 +240,17 @@ function buildAgentSelect() {
 
 function selectAgent(id) {
   picked = id;
+  settings.agent = id;
+  saveSettings();
+  refreshLobby();
   for (const card of $('agentGrid').children) card.classList.toggle('sel', card.dataset.id === id);
   showAgentDetail(AGENT_BY_ID[id]);
 }
 
-function openAgentSelect() {
+let selectStarts = true;
+function openAgentSelect(startAfter = true) {
+  selectStarts = startAfter;
+  $('lockBtn').textContent = startAfter ? 'LOCK IN' : 'DONE';
   sound.init();
   $('menu').classList.add('hidden');
   $('matchEnd').classList.add('hidden');
@@ -233,9 +273,12 @@ function startGame() {
   lock();
 }
 
-$('playBtn').addEventListener('click', openAgentSelect);
-$('againBtn').addEventListener('click', openAgentSelect);
-$('lockBtn').addEventListener('click', startGame);
+$('playBtn').addEventListener('click', () => { sound.init(); startGame(); });
+$('againBtn').addEventListener('click', () => { $('matchEnd').classList.add('hidden'); startGame(); });
+$('lockBtn').addEventListener('click', () => {
+  if (selectStarts) startGame();
+  else { $('agentSelect').classList.add('hidden'); $('menu').classList.remove('hidden'); }
+});
 $('backBtn').addEventListener('click', () => {
   $('agentSelect').classList.add('hidden');
   $('menu').classList.remove('hidden');
@@ -253,6 +296,7 @@ const toMenu = () => {
   $('matchEnd').classList.add('hidden');
   placeSettings('settingsSlot');
   $('menu').classList.remove('hidden');
+  refreshLobby();
   if (locked()) document.exitPointerLock();
 };
 $('quitBtn').addEventListener('click', toMenu);
@@ -290,7 +334,15 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (game.running) game.frame(dt);
-  else game.renderIdle(now / 1000, dt);
+  else {
+    const tags = game.renderLobby(now / 1000, dt);
+    const show = tags && !$('menu').classList.contains('hidden');
+    for (let i = 0; i < 3; i++) {
+      const el = $('tag' + i);
+      el.style.display = show ? '' : 'none';
+      if (show) { el.style.left = `${tags[i].x}px`; el.style.top = `${tags[i].y}px`; }
+    }
+  }
   input.endFrame();
 
   fpsAcc += dt; fpsFrames++;

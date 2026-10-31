@@ -1135,6 +1135,98 @@ export class Game {
     group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
   }
 
+  // ---- lobby: a stage just outside the current map, you in the middle, two invite pads ----
+
+  buildLobby(agent, held) {
+    if (this.lobby && this.lobby.scene === this.scene && this.lobby.agentId === agent.id && this.lobby.heldKey === held.key) return;
+    if (this.lobby && this.lobby.scene === this.scene) this.scene.remove(this.lobby.group);
+    const group = new THREE.Group();
+    const S = new THREE.Vector3(0, 11, this.map.H * 1.5 + 9);
+    group.position.copy(S);
+    const accent = new THREE.Color(agent.accent);
+    // three pads
+    const pads = [];
+    for (const [i, x, z] of [[0, 0, 0], [1, -2.4, 0.9], [2, 2.4, 0.9]]) {
+      const pad = new THREE.Group();
+      pad.position.set(x, 0, z);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.05, 0.22, 40), new THREE.MeshPhongMaterial({ color: 0x1b2230, shininess: 80 }));
+      base.position.y = 0.11;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.035, 8, 48), new THREE.MeshBasicMaterial({ color: i === 0 ? accent : 0x5a6a80 }));
+      ring.rotation.x = Math.PI / 2; ring.position.y = 0.23;
+      const glowDisc = new THREE.Mesh(new THREE.CircleGeometry(0.9, 40), new THREE.MeshBasicMaterial({ color: i === 0 ? accent : 0x3a4a60, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glowDisc.rotation.x = -Math.PI / 2; glowDisc.position.y = 0.225;
+      pad.add(base, ring, glowDisc);
+      if (i > 0) {
+        // empty slot: a glowing + hologram
+        const plus = new THREE.Group();
+        const pm = new THREE.MeshBasicMaterial({ color: 0x9ab8e0, transparent: true, opacity: 0.55 });
+        plus.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.12), pm), new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), pm));
+        plus.position.y = 1.2;
+        pad.add(plus);
+        pad.userData.plus = plus;
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 2.6, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0x6a8ab8, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+        beam.position.y = 1.5;
+        pad.add(beam);
+      }
+      group.add(pad);
+      pads.push(pad);
+    }
+    // backing arc + floor glow
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(4.6, 48), new THREE.MeshPhongMaterial({ color: 0x141a24, shininess: 60 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01;
+    group.add(floor);
+    // floating island underneath
+    const under = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 1.2, 3.2, 40), new THREE.MeshPhongMaterial({ color: 0x232b38, shininess: 30 }));
+    under.position.y = -1.6;
+    group.add(under);
+    const rimGlow = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.05, 8, 80), new THREE.MeshBasicMaterial({ color: accent }));
+    rimGlow.rotation.x = Math.PI / 2; rimGlow.position.y = -0.02;
+    group.add(rimGlow);
+    const arcM = new THREE.Mesh(new THREE.TorusGeometry(4.4, 0.06, 8, 64, Math.PI), new THREE.MeshBasicMaterial({ color: accent }));
+    arcM.rotation.x = -Math.PI / 2; arcM.rotation.z = Math.PI; arcM.position.set(0, 0.03, 0.3);
+    group.add(arcM);
+    const key = new THREE.PointLight(0xffffff, 30, 14, 1.6); key.position.set(1.5, 3.5, 4); group.add(key);
+    const rim = new THREE.PointLight(accent.getHex(), 25, 10, 1.6); rim.position.set(-1.5, 2.5, -2); group.add(rim);
+    // the player
+    const model = buildCharacter(agent, ALLY_LIGHT, false);
+    setCharacterGun(model, held.weapon, { [held.weapon]: held });
+    model.root.position.set(0, 0.22, 0);
+    model.root.rotation.y = Math.PI;
+    pads[0].add(model.root);
+    this.scene.add(group);
+    this.lobby = { scene: this.scene, group, pads, model, agentId: agent.id, heldKey: held.key, S, t: 0 };
+  }
+
+  // Renders the lobby; returns screen positions of the three name tags.
+  renderLobby(t, dt) {
+    const L = this.lobby;
+    if (!L) return null;
+    L.t += dt;
+    const S = L.S;
+    // gentle camera drift
+    const cx = Math.sin(L.t * 0.25) * 0.35;
+    this.camera.fov = 38; this.camera.updateProjectionMatrix();
+    this.camera.position.set(S.x + cx, S.y + 1.55, S.z + 6.4);
+    this.camera.lookAt(S.x, S.y + 1.35, S.z);
+    // idle animation: breathing, weight shift, gun held low, occasional look around
+    const look = Math.sin(L.t * 0.35) * 0.25 + Math.sin(L.t * 1.3) * 0.04;
+    L.model.root.rotation.y = Math.PI + look;
+    animateCharacter(L.model, { speed: 0, vx: 0, vz: 0, yaw: Math.PI + look, crouch: 0, pitch: -0.45, onGround: true }, dt);
+    for (const pad of L.pads) if (pad.userData.plus) { pad.userData.plus.rotation.y += dt * 1.2; pad.userData.plus.position.y = 1.2 + Math.sin(L.t * 2) * 0.06; }
+    this.map.update(dt);
+    this.renderer.clear();
+    this.renderer.render(this.scene, this.camera);
+    const out = [];
+    const w = window.innerWidth, h = window.innerHeight;
+    for (const pad of L.pads) {
+      const p = pad.getWorldPosition(new THREE.Vector3());
+      p.y += pad === L.pads[0] ? 2.2 : 2.25;
+      p.project(this.camera);
+      out.push({ x: (p.x + 1) / 2 * w, y: (1 - p.y) / 2 * h });
+    }
+    return out;
+  }
+
   // Slow orbit over the map behind the menus.
   renderIdle(t, dt) {
     const a = t * 0.05;

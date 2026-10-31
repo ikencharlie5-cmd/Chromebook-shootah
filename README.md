@@ -111,9 +111,13 @@ balconies, rocks, bushes and puddles, real-time shadows (Medium/High graphics) a
 
 ## Locker & skins
 
-From the main menu open the **Locker**. Spend coins to **roll** (¤100) — a reel spins and lands on a random
+The main menu is a **lobby**: your agent stands on a floating stage above the current map holding your best
+skin, with two **+ INVITE** slots ready for future multiplayer parties. Click your character (or CHANGE AGENT)
+to pick an agent, then hit **PLAY**.
+
+From the lobby open the **Locker**. Spend coins to **roll** (¤100) — a reel spins and lands on a random
 skin for a random weapon or knife (Combat Knife or Karambit). Rarities: Common 58%, Rare 28%, Epic 11%,
-Legendary 3%. Equip anything you own; duplicates refund ¤30. You earn coins after every match
+Legendary 3%, and knives are a special ★ drop (4% of rolls). Equip anything you own; duplicates refund ¤30. You earn coins after every match
 (+50, +10 per kill, +100 for a win). Your Locker is saved in the browser. Bots use random skins too.
 
 ## Code layout

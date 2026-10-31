@@ -77,15 +77,43 @@
     <div id="buyAbilities"></div>
   </div>
 
-  <div id="menu" class="overlay">
-    <div class="panel">
-      <h1>CHROMEBOOK<br><span>SHOOTAH</span></h1>
-      <p class="tag">3v3 tactical shooter · 6 agents · 5 maps</p>
-      <button id="playBtn" class="primary">PLAY</button>
-      <button id="lockerBtn">LOCKER · <span class="coin-count">¤ 0</span></button>
+  <div id="menu" class="lobby">
+    <div class="lobby-top">
+      <div class="logo">CHROMEBOOK <span>SHOOTAH</span></div>
+      <div class="lobby-tabs">
+        <button class="tab on">LOBBY</button>
+        <button class="tab" id="lockerBtn">LOCKER</button>
+        <button class="tab" id="settingsBtn">SETTINGS</button>
+        <button class="tab" id="controlsBtn">CONTROLS</button>
+      </div>
+      <div class="lobby-coins coin-count">¤ 0</div>
+    </div>
+
+    <div class="name-tag" id="tag0"><b id="tagName">YOU</b><span id="tagAgent"></span></div>
+    <div class="name-tag invite" id="tag1">+ INVITE</div>
+    <div class="name-tag invite" id="tag2">+ INVITE</div>
+
+    <div class="lobby-left">
+      <div class="mode-card">
+        <div class="mode-title">CORE RUSH</div>
+        <div class="mode-sub">3v3 · bots · random map · first to 7</div>
+      </div>
+      <button id="agentBtn" class="lobby-small">CHANGE AGENT</button>
+    </div>
+
+    <div class="lobby-right">
+      <button id="playBtn" class="play-big">PLAY</button>
+      <div class="lobby-hint">Click your character to change agent</div>
+    </div>
+
+    <div id="settingsPanel" class="lobby-panel hidden">
+      <h3>SETTINGS</h3>
       <div id="settingsSlot"></div>
+      <button class="panel-close">CLOSE</button>
+    </div>
+    <div id="controlsPanel" class="lobby-panel hidden">
+      <h3>CONTROLS</h3>
       <div class="controls">
-        <h3>Controls</h3>
         <div class="grid">
           <span>WASD</span><span>Move</span>
           <span>Mouse</span><span>Aim / Shoot</span>
@@ -96,7 +124,7 @@
           <span>1 2 3</span><span>Primary / Pistol / Knife</span>
           <span>Q E F</span><span>Abilities (E is your free signature)</span>
           <span>X</span><span>Ultimate</span>
-          <span>Right click</span><span>Scope (sniper)</span>
+          <span>Right click</span><span>Scope (snipers)</span>
           <span>B</span><span>Buy menu (buy phase)</span>
           <span>4 (hold)</span><span>Plant / defuse the Core</span>
           <span>Tab</span><span>Scoreboard</span>
@@ -104,6 +132,7 @@
         </div>
         <p class="rules">Attackers win by planting the Core at a site and letting it detonate, or by eliminating the defenders. Defenders win by stopping the plant, defusing the Core, or running out the clock. First team to 7 rounds wins; sides swap after round 6.</p>
       </div>
+      <button class="panel-close">CLOSE</button>
     </div>
   </div>
 

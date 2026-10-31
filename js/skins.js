@@ -8,6 +8,8 @@ export const RARITY = {
 };
 
 // body/dark/steel/accent/glow colours; pattern drawn on body (and dark when patternOn = 'both')
+export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
+
 export const SKINS = {
   factory: { name: 'Factory', rarity: 'common' },
   urban: { name: 'Urban Camo', rarity: 'common', body: 0x6a7078, dark: 0x3a3f46, pattern: 'camo', colors: ['#6a7078', '#4a5058', '#8c939b', '#2e3238'], patternOn: 'both', accent: 0xd0d4da, glow: 0xffffff },
@@ -32,6 +34,7 @@ export const KNIFE_MODELS = { combat: 'Combat Knife', karambit: 'Karambit' };
 export const LOCKER_WEAPONS = ['knife', 'pip', 'bolt', 'hornet', 'wasp', 'thunder', 'raptor', 'talon', 'bastion', 'needle', 'arbiter', 'lynx'];
 
 export const ROLL_COST = 100;
+export const KNIFE_CHANCE = 0.04;   // knives are special drops
 export const DUPLICATE_REFUND = 30;
 
 // item key: "weapon|skin" or "knife|skin|model"
@@ -70,14 +73,16 @@ export function randomItem(rng = Math.random) {
   const rarity = pickRarity(rng);
   const skins = Object.entries(SKINS).filter(([id, s]) => s.rarity === rarity && id !== 'factory').map(([id]) => id);
   const skin = skins[Math.floor(rng() * skins.length)];
-  const weapon = LOCKER_WEAPONS[Math.floor(rng() * LOCKER_WEAPONS.length)];
+  const guns = LOCKER_WEAPONS.filter((w) => w !== 'knife');
+  const weapon = rng() < KNIFE_CHANCE ? 'knife' : guns[Math.floor(rng() * guns.length)];
   const model = weapon === 'knife' ? (rng() < 0.45 ? 'karambit' : 'combat') : undefined;
   return { weapon, skin, model, rarity, key: itemKey(weapon, skin, model) };
 }
 
 // Random cosmetic loadout for bots so the server feels alive.
 export function randomBotSkin(weapon) {
-  if (Math.random() < 0.45) return { skin: 'factory', model: weapon === 'knife' && Math.random() < 0.3 ? 'karambit' : 'combat' };
+  if (weapon === 'knife') return Math.random() < 0.9 ? { skin: 'factory', model: 'combat' } : { skin: randomItem().skin, model: Math.random() < 0.5 ? 'karambit' : 'combat' };
+  if (Math.random() < 0.45) return { skin: 'factory' };
   const it = randomItem();
   return { skin: it.skin, model: weapon === 'knife' ? it.model : undefined };
 }
