@@ -1,6 +1,6 @@
-import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031175357';
-import { fmtTime } from './util.js?v=20261031175357';
-import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031175357';
+import { WEAPONS, ARMOR, BUY_LIST } from './weapons.js?v=20261031180755';
+import { fmtTime } from './util.js?v=20261031180755';
+import { ABILITY_INFO, iconSvg } from './agents.js?v=20261031180755';
 
 const $ = (id) => document.getElementById(id);
 

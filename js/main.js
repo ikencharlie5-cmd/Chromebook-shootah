@@ -1,13 +1,14 @@
-import { Game } from './game.js?v=20261031175357';
-import { Sound } from './audio.js?v=20261031175357';
-import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031175357';
-import { Locker } from './locker.js?v=20261031175357';
-import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031175357';
-import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031175357';
-import { makeRoster } from './game.js?v=20261031175357';
-import { randomMapDef } from './maps.js?v=20261031175357';
-import { markDirty, startAccount, signIn, signUp, signOut, account, onAccountChange, accountsEnabled } from './account.js?v=20261031175357';
-import { Party, MAX_PARTY } from './net.js?v=20261031175357';
+import { Game } from './game.js?v=20261031180755';
+import { Sound } from './audio.js?v=20261031180755';
+import { AGENTS, AGENT_BY_ID, ABILITY_INFO, iconSvg } from './agents.js?v=20261031180755';
+import { Locker } from './locker.js?v=20261031180755';
+import { SKINS, RARITY_ORDER, equippedFor, saveProfile } from './skins.js?v=20261031180755';
+import { rankOf, badgeHtml, rrDelta, skillForRR } from './ranks.js?v=20261031180755';
+import { makeRoster } from './game.js?v=20261031180755';
+import { randomMapDef } from './maps.js?v=20261031180755';
+import { markDirty, startAccount, signIn, signUp, signOut, account, onAccountChange, accountsEnabled } from './account.js?v=20261031180755';
+import { Matchmaker, listLobbies, matchmakingEnabled } from './matchmaking.js?v=20261031180755';
+import { Party, MAX_PARTY } from './net.js?v=20261031180755';
 
 const $ = (id) => document.getElementById(id);
 
@@ -257,7 +258,7 @@ party.onStatus = (text, err) => {
   el.textContent = text;
   el.className = err ? 'err' : '';
 };
-const busy = (b) => { for (const id of ['createParty', 'joinParty']) $(id).disabled = b; };
+const busy = (b) => { for (const id of ['createParty', 'joinParty', 'findMatch', 'browseLobbies']) $(id).disabled = b; };
 $('createParty').addEventListener('click', () => {
   busy(true); party.status('Creating party…');
   party.host(meInfo()).then(() => party.status('Share the code with friends')).catch((e) => party.status(e.message, true)).finally(() => busy(false));
@@ -269,7 +270,10 @@ $('joinParty').addEventListener('click', () => {
   party.join(code, meInfo()).then(() => party.status('Joined! Waiting for the host to start')).catch((e) => party.status(e.message, true)).finally(() => busy(false));
 });
 $('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinParty').click(); });
-$('leaveParty').addEventListener('click', () => { party.leave(); party.status('Left the party'); });
+$('leaveParty').addEventListener('click', () => {
+  const was = mm.searching;
+  mm.stop(); party.leave(); party.status(was ? 'Search cancelled' : 'Left the party');
+});
 $('copyCode').addEventListener('click', () => { navigator.clipboard?.writeText(party.code || ''); party.status('Code copied'); });
 for (const b of $('modeToggle').querySelectorAll('button')) b.addEventListener('click', () => party.setMode(b.dataset.mode));
 
@@ -290,6 +294,9 @@ function renderParty() {
   $('modeSub').textContent = '3v3 · bots · random map · first to 7';
   if (!inParty) return;
   $('partyCode').textContent = party.code;
+  $('publicToggle').checked = mm.public;
+  $('publicRow').classList.toggle('locked', !party.isHost);
+  $('leaveParty').textContent = mm.searching ? 'CANCEL SEARCH' : 'LEAVE PARTY';
   for (const b of $('modeToggle').querySelectorAll('button')) b.classList.toggle('on', b.dataset.mode === party.mode);
   $('modeToggle').classList.toggle('locked', !party.isHost);
   $('partyMembers').innerHTML = party.members.map((m) => {
@@ -312,6 +319,48 @@ function renderParty() {
   else if (party.mode === 'coop' && n > 3) { play.disabled = true; play.textContent = 'MAX 3 vs BOTS'; }
 }
 party.onChange = () => { renderParty(); renderQueue(); };
+
+// ---- matchmaking (public lobbies on Firebase) ----
+const mm = new Matchmaker(party, {
+  info: () => ({ queue: settings.queue === 'ranked' ? 'ranked' : 'unrated', rr: locker.profile.rr, inMatch: game.running }),
+  status: (t, err) => party.status(t, err),
+  hostParty: () => party.host(meInfo()),
+  joinCode: (code) => party.join(code, meInfo()),
+  startMatch: () => { if (party.isHost && !game.running) startNetMatch(); },
+  changed: () => renderParty(),
+});
+window.__mm = mm;
+$('findMatch').addEventListener('click', async () => {
+  if (!matchmakingEnabled()) { party.status('Online matchmaking is not set up yet', true); return; }
+  sound.init();
+  if (settings.queue === 'practice') { settings.queue = 'unrated'; saveSettings(); renderQueue(); }
+  busy(true);
+  await mm.find();
+  busy(false);
+});
+$('publicToggle').addEventListener('change', () => mm.setPublic($('publicToggle').checked));
+
+async function refreshLobbyList() {
+  const list = $('lobbyList');
+  list.innerHTML = '<div class="lobby-empty">Loading…</div>';
+  let lobbies;
+  try { lobbies = await listLobbies(); } catch (e) { list.innerHTML = `<div class="lobby-empty">${escapeHtml(e.message)}</div>`; return; }
+  if (!lobbies.length) { list.innerHTML = '<div class="lobby-empty">No open lobbies right now. Hit FIND MATCH to open one!</div>'; return; }
+  list.innerHTML = lobbies.map((l) => `<div class="lobby-row"><span class="lh">${escapeHtml(l.host)}<br><span class="lm">${l.mode === 'coop' ? 'party vs bots' : 'friends vs friends'} · ${l.queue}</span></span>
+    <span class="lc">${l.count}/${l.max}</span><button data-code="${escapeHtml(l.code)}">JOIN</button></div>`).join('');
+  for (const b of list.querySelectorAll('button')) b.addEventListener('click', () => {
+    openPanel(null);
+    busy(true); party.status('Joining…');
+    party.join(b.dataset.code, meInfo()).then(() => party.status('Joined! The match starts soon'))
+      .catch((e) => party.status(e.message, true)).finally(() => busy(false));
+  });
+}
+$('browseLobbies').addEventListener('click', () => {
+  if (!matchmakingEnabled()) { party.status('Online matchmaking is not set up yet', true); return; }
+  openPanel('lobbyBrowser');
+  refreshLobbyList();
+});
+$('lobbyRefresh').addEventListener('click', refreshLobbyList);
 party.on('queue', (m) => { settings.queue = m.q; renderQueue(); });
 renderParty();
 refreshRank();
@@ -364,7 +413,7 @@ locker.onChange = refreshLobby;
 refreshLobby();
 
 function openPanel(id) {
-  for (const p of ['settingsPanel', 'controlsPanel', 'accountPanel']) $(p).classList.toggle('hidden', p !== id);
+  for (const p of ['settingsPanel', 'controlsPanel', 'accountPanel', 'lobbyBrowser']) $(p).classList.toggle('hidden', p !== id);
 }
 $('settingsBtn').addEventListener('click', () => { placeSettings('settingsSlot'); openPanel('settingsPanel'); });
 $('controlsBtn').addEventListener('click', () => openPanel('controlsPanel'));

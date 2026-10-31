@@ -1,5 +1,5 @@
-import * as THREE from '../lib/three.module.min.js?v=20261031175357';
-import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031175357';
+import * as THREE from '../lib/three.module.min.js?v=20261031180755';
+import { rayAABB, rayHit, dirFromAngles, wrapAngle, yawTo } from './util.js?v=20261031180755';
 
 const GRAV = 14;
 const SMOKE_R = 4.3;

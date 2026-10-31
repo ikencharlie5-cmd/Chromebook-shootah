@@ -209,6 +209,7 @@ function sanitizeMe(me = {}) {
     agent: String(me.agent || 'haze'),
     held: me.held && typeof me.held === 'object' ? { weapon: String(me.held.weapon), skin: String(me.held.skin), key: String(me.held.key) } : null,
     skins: me.skins && typeof me.skins === 'object' ? me.skins : {},
+    rr: Number.isFinite(me.rr) ? Math.max(0, Math.min(5000, me.rr)) : 0,
   };
 }
 

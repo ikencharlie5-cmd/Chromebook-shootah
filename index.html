@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chromebook Shootah</title>
-  <link rel="stylesheet" href="css/style.css?v=20261031175357">
+  <link rel="stylesheet" href="css/style.css?v=20261031180755">
 </head>
 <body>
   <div id="game"></div>
@@ -111,6 +111,8 @@
       <div class="party-card">
         <label class="name-row">NAME <input id="nameInput" maxlength="16" placeholder="Your name"></label>
         <div id="partyNone">
+          <button id="findMatch" class="find-match">FIND MATCH <span>play with people online</span></button>
+          <button id="browseLobbies" class="lobby-small">BROWSE OPEN LOBBIES</button>
           <button id="createParty" class="lobby-small accent">CREATE PARTY</button>
           <div class="join-row"><input id="joinCode" maxlength="5" placeholder="CODE"><button id="joinParty" class="lobby-small">JOIN</button></div>
         </div>
@@ -119,6 +121,7 @@
           <div class="mode-toggle" id="modeToggle">
             <button data-mode="coop">PARTY vs BOTS</button><button data-mode="pvp">FRIENDS vs FRIENDS</button>
           </div>
+          <label id="publicRow" class="public-row"><input type="checkbox" id="publicToggle"> PUBLIC: anyone can join from Find Match</label>
           <div id="partyMembers"></div>
           <button id="leaveParty" class="lobby-small">LEAVE PARTY</button>
         </div>
@@ -142,6 +145,12 @@
       <div id="settingsSlot"></div>
       <button class="panel-close">CLOSE</button>
     </div>
+    <div id="lobbyBrowser" class="lobby-panel hidden">
+      <h3>OPEN LOBBIES</h3>
+      <div id="lobbyList" class="lobby-list"></div>
+      <div class="lb-buttons"><button id="lobbyRefresh" class="lobby-small">REFRESH</button><button class="panel-close">CLOSE</button></div>
+    </div>
+
     <div id="accountPanel" class="lobby-panel account-panel hidden">
       <h3>ACCOUNT</h3>
       <div id="accOut">
@@ -318,7 +327,7 @@
   </div>
   <script src="lib/peerjs.min.js"></script>
   <script>
-    window.GAME_VERSION = '20261031175357';
+    window.GAME_VERSION = '20261031180755';
     // If a script fails (often a stale cache after an update), show a clear message instead of a blank screen.
     function showLoadError(msg) {
       document.getElementById('loadError').classList.remove('hidden');
@@ -328,6 +337,6 @@
     window.addEventListener('unhandledrejection', (e) => { if (!window.__game) showLoadError(String(e.reason)); });
     setTimeout(() => { if (!window.__game) showLoadError('Game did not finish loading.'); }, 15000);
   </script>
-  <script type="module" src="js/main.js?v=20261031175357" onerror="showLoadError('A game file failed to load.')"></script>
+  <script type="module" src="js/main.js?v=20261031180755" onerror="showLoadError('A game file failed to load.')"></script>
 </body>
 </html>

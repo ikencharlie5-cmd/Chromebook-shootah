@@ -186,6 +186,7 @@ They stay switched off until you add a free Firebase project:
 
 1. Go to https://console.firebase.google.com → **Create a project** (Google Analytics can be off).
 2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable → Save.**
+   Also enable **Anonymous** (lets guests use online matchmaking without an account).
    (Usernames are stored as `name@players.shootah.game` behind the scenes; no real email is needed.)
 3. **Build → Firestore Database → Create database** → any location → **Start in production mode**.
 4. In Firestore, open the **Rules** tab, paste this and click **Publish**:
@@ -199,12 +200,32 @@ They stay switched off until you add a free Firebase project:
          allow write: if request.auth != null && request.auth.uid == uid
            && request.resource.data.data.size() < 200000;
        }
+       match /lobbies/{code} {
+         allow read: if true;
+         allow create, update: if request.auth != null
+           && request.resource.data.owner == request.auth.uid
+           && (resource == null || resource.data.owner == request.auth.uid)
+           && request.resource.data.keys().hasOnly(['code', 'host', 'owner', 'mode', 'queue', 'count', 'max', 'rr', 'updated'])
+           && request.resource.data.code == code && code.size() <= 8
+           && request.resource.data.host is string && request.resource.data.host.size() <= 16
+           && request.resource.data.count is int && request.resource.data.count <= 6
+           && request.resource.data.updated == request.time;
+         allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
+       }
      }
    }
    ```
-5. **Project settings (gear) → General → Your apps → Web (`</>`)** → register an app (no hosting needed).
+. **Project settings (gear) → General → Your apps → Web (`</>`)** → register an app (no hosting needed).
    Copy `apiKey` and `projectId` from the config it shows into `js/firebase-config.js`.
 6. **Authentication → Settings → Authorized domains** → add `ikencharlie5-cmd.github.io`.
 
 How saving works: while signed in, every save is uploaded a second or two later (and when the tab closes).
 On load, the newest cloud copy wins. Signing out restores this device's guest progress. There is no password reset.
+
+## Online matchmaking
+
+**FIND MATCH** joins the fullest open public lobby for your queue (unrated or ranked), or opens one and waits.
+When a second player arrives a 25 s countdown starts (3 s at 6/6) and bots fill the empty spots in the 3v3.
+**BROWSE OPEN LOBBIES** lists every public lobby, and hosts can tick **PUBLIC** to let anyone join a normal party.
+Open lobbies are listed in Firestore (`lobbies/{partyCode}`, refreshed every 8 s); matches still run peer-to-peer
+on the host's computer.
